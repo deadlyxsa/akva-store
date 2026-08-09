@@ -397,15 +397,9 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         f"👋 Привет, <b>{update.effective_user.first_name}</b>!\n\n"
         "Добро пожаловать в <b>Akva Store</b> 🌊\n"
-        "Нефтеюганск · Вейп · Жидкости · Расходники\n\n"
-        "📋 <b>Как сделать заказ:</b>\n"
-        "1️⃣ Нажми <b>«🛍 Магазин»</b> — открой каталог\n"
-        "2️⃣ Выбери товар и вкус, добавь в корзину\n"
-        "3️⃣ Нажми <b>«Оформить заказ»</b> и подтверди\n"
-        "4️⃣ Жди — менеджер напишет тебе прямо сюда 💙\n\n"
-        "💬 <b>Как общаться с менеджером:</b>\n"
-        "После заказа или нажатия <b>«💬 Связаться с менеджером»</b> "
-        "просто пиши текст в этот чат — менеджер увидит и ответит здесь же.",
+        "Вейп · Жидкости · Расходники · Нефтеюганск\n\n"
+        "Нажми <b>«🛍 Магазин»</b> — выбери товар и оформи заказ.\n"
+        "После заказа просто напиши адрес сюда — менеджер свяжется с тобой здесь же 💙",
         reply_markup=main_keyboard(),
         parse_mode="HTML",
     )
@@ -416,10 +410,7 @@ async def btn_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         return
     support_users.add(update.effective_user.id)
     await update.message.reply_text(
-        "💬 <b>Связь с менеджером Akva Store</b>\n\n"
-        "Возникли вопросы или проблемы?\n\n"
-        "Напишите сообщение — менеджер ответит вам прямо здесь 💙\n\n"
-        "<i>Для возврата в магазин нажмите /start</i>",
+        "💬 Напиши свой вопрос — менеджер ответит здесь 👇",
         parse_mode="HTML",
     )
 
@@ -612,9 +603,13 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     support_users.add(user.id)
 
     await update.message.reply_text(
-        f"✅ <b>Заказ принят!</b>\n\n{lines}\n\n{total_msg}\n\n"
-        "Менеджер скоро напишет тебе здесь 💙\n\n"
-        "<i>Можешь написать любое сообщение в этот чат — менеджер увидит его и ответит.</i>",
+        f"✅ <b>Заказ принят!</b>\n\n{lines}\n\n{total_msg}",
+        parse_mode="HTML",
+    )
+    await update.message.reply_text(
+        "📍 <b>Напиши адрес доставки</b> в формате:\n\n"
+        "<b>Микрорайон, дом, подъезд, квартира</b>\n\n"
+        "Пример: <i>16А мкр, д. 5, подъезд 2, кв. 47</i>",
         parse_mode="HTML",
     )
 
