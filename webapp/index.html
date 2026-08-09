@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0,
+                 maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Akva Store</title>
+
+  <!-- Telegram Mini App SDK (обязательно) -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app-wrapper">
+
+  <!-- ════════════════════════════════════════
+       HEADER
+  ════════════════════════════════════════ -->
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon" aria-hidden="true">🌊</div>
+      <div class="logo-text">
+        <span class="brand">Akva Store</span>
+        <span class="tagline">Vape · Liquid · Snus</span>
+      </div>
+    </div>
+
+    <button class="cart-btn" id="cartButton" aria-label="Корзина">
+      🛒
+      <span class="cart-badge" id="cartBadge" aria-live="polite">0</span>
+    </button>
+  </header>
+
+  <!-- ════════════════════════════════════════
+       BANNER
+  ════════════════════════════════════════ -->
+  <section class="banner" aria-label="Акции">
+    <div class="banner-content">
+      <h1 class="banner-title">Свежее<br>поступление 🌊</h1>
+      <p class="banner-sub">Лучший выбор вейп-товаров</p>
+      <div class="banner-pill">
+        ✨ Бесплатная доставка от 3 000 ₽
+      </div>
+    </div>
+    <div class="banner-wave" aria-hidden="true">💧</div>
+  </section>
+
+  <!-- ════════════════════════════════════════
+       КАТЕГОРИИ
+  ════════════════════════════════════════ -->
+  <p class="section-label">Категории</p>
+  <nav class="categories" id="categories" aria-label="Категории товаров">
+    <!-- Заполняется через JS (renderCategories) -->
+  </nav>
+
+  <!-- ════════════════════════════════════════
+       СЕТКА ТОВАРОВ
+  ════════════════════════════════════════ -->
+  <section class="products-section">
+    <p class="section-label">Каталог</p>
+    <div class="products-grid" id="productsGrid" role="list">
+      <!-- Заполняется через JS (renderProducts) -->
+    </div>
+  </section>
+
+</div><!-- /app-wrapper -->
+
+<!-- ════════════════════════════════════════
+     НИЖНЯЯ ПЛАШКА КОРЗИНЫ (Telegram-стиль)
+     Показывается когда в корзине есть товары
+════════════════════════════════════════ -->
+<div class="cart-bar" id="cartBar" role="status" aria-live="polite">
+  <div class="cart-bar-inner">
+    <div class="cart-bar-info">
+      <div class="cart-bar-count" id="cartCount">0 товаров</div>
+      <div class="cart-bar-total" id="cartTotal">0 ₽</div>
+    </div>
+    <button class="order-btn" id="orderBtn">
+      Посмотреть заказ →
+    </button>
+  </div>
+</div>
+
+<!-- TOAST-уведомление -->
+<div class="toast" id="toast" role="alert" aria-live="assertive"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
