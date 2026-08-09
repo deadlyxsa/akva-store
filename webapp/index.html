@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0,
+                 maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Akva Store</title>
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="style.css?v=12" />
+</head>
+<body>
+
+<div class="app-wrapper">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">
+        <img src="images/logo.png" alt="Akva Store" class="logo-img" />
+      </div>
+      <div class="logo-text">
+        <span class="brand">Akva Store</span>
+        <span class="tagline">Vape · Liquid · Snus</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="admin-btn" id="adminBtn" aria-label="Управление наличием" style="display:none">⚙️</button>
+      <button class="cart-btn" id="cartButton" aria-label="Корзина">
+        🛒
+        <span class="cart-badge" id="cartBadge" aria-live="polite">0</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- МОДАЛКА УПРАВЛЕНИЯ НАЛИЧИЕМ -->
+  <div class="avail-overlay" id="availOverlay"></div>
+  <div class="avail-modal" id="availModal" role="dialog" aria-label="Управление наличием">
+    <div class="avail-modal-handle"></div>
+    <div class="avail-modal-header">
+      <h2 class="avail-modal-title">⚙️ Наличие вкусов</h2>
+      <button class="cart-modal-close" id="availModalClose">✕</button>
+    </div>
+    <div class="avail-body" id="availBody"></div>
+    <div class="avail-footer">
+      <button class="avail-save-btn" id="availSaveBtn">💾 Сохранить</button>
+    </div>
+  </div>
+
+  <!-- BANNER -->
+  <section class="banner" aria-label="Акции">
+    <div class="banner-content">
+      <h1 class="banner-title">Свежее<br>поступление 🌊</h1>
+      <p class="banner-sub">Лучший выбор вейп-товаров</p>
+      <div class="banner-pill">✨ Бесплатная доставка от 4 500 ₽</div>
+    </div>
+    <div class="banner-cloud" aria-hidden="true"></div>
+  </section>
+
+  <!-- КАТЕГОРИИ -->
+  <div class="section-label-row">
+    <p class="section-label">Категории</p>
+    <div class="cat-scroll-track" id="catScrollTrack">
+      <div class="cat-scroll-thumb" id="catScrollThumb"></div>
+    </div>
+  </div>
+  <nav class="categories" id="categories" aria-label="Категории товаров"></nav>
+
+  <!-- ПОИСК -->
+  <div class="search-wrap">
+    <span class="search-icon">🔍</span>
+    <input
+      type="search"
+      class="search-input"
+      id="searchInput"
+      placeholder="Поиск товаров..."
+      autocomplete="off"
+    />
+  </div>
+
+  <!-- СОРТИРОВКА + СЧЁТЧИК -->
+  <div class="sort-row">
+    <span class="products-count" id="productsCount">0 ТОВАРОВ</span>
+    <div class="sort-wrap">
+      <select class="sort-select" id="sortSelect" aria-label="Сортировка">
+        <option value="default">По умолчанию</option>
+        <option value="asc">Сначала дешёвые</option>
+        <option value="desc">Сначала дорогие</option>
+      </select>
+      <span class="sort-arrow">▾</span>
+    </div>
+  </div>
+
+  <!-- СЕТКА ТОВАРОВ -->
+  <section class="products-section">
+    <div class="products-grid" id="productsGrid" role="list"></div>
+  </section>
+
+</div><!-- /app-wrapper -->
+
+<!-- НИЖНЯЯ ПЛАШКА КОРЗИНЫ -->
+<div class="cart-bar" id="cartBar" role="status" aria-live="polite">
+  <div class="cart-bar-inner">
+    <div class="cart-bar-info">
+      <div class="cart-bar-count" id="cartCount">0 товаров</div>
+      <div class="cart-bar-total" id="cartTotal">0 ₽</div>
+    </div>
+    <button class="order-btn" id="orderBtn">Посмотреть заказ →</button>
+  </div>
+</div>
+
+<!-- МОДАЛКА КОРЗИНЫ -->
+<div class="cart-modal-overlay" id="cartOverlay"></div>
+<div class="cart-modal" id="cartModal" role="dialog" aria-label="Корзина">
+  <div class="cart-modal-handle"></div>
+  <div class="cart-modal-header">
+    <h2 class="cart-modal-title">🛒 Ваш заказ</h2>
+    <button class="cart-modal-close" id="cartModalClose" aria-label="Закрыть">✕</button>
+  </div>
+  <div class="cart-items" id="cartItems"></div>
+  <div class="cart-modal-footer">
+
+    <!-- ПРОМОКОД -->
+    <div class="promo-section">
+      <div class="promo-input-row" id="promoInputRow">
+        <span class="promo-icon">🏷</span>
+        <input type="text" id="promoInput" class="promo-input"
+               placeholder="Промокод" autocomplete="off" autocapitalize="characters" />
+        <button class="promo-apply-btn" id="promoApplyBtn">Применить</button>
+      </div>
+      <div class="promo-applied" id="promoApplied" style="display:none">
+        <span class="promo-tag" id="promoTag"></span>
+        <button class="promo-remove-btn" id="promoRemoveBtn">✕</button>
+      </div>
+    </div>
+
+    <!-- ИТОГО -->
+    <div class="cart-footer-row">
+      <span class="cart-footer-label">Итого</span>
+      <div class="cart-total-wrap">
+        <span class="cart-footer-orig" id="cartModalOrig" style="display:none"></span>
+        <span class="cart-footer-total" id="cartModalTotal">0 ₽</span>
+      </div>
+    </div>
+
+    <button class="confirm-btn" id="confirmOrderBtn">Оформить заказ 🚀</button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast" role="alert" aria-live="assertive"></div>
+
+<script src="app.js?v=16"></script>
+</body>
+</html>
