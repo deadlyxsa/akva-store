@@ -344,9 +344,13 @@ function buildCard(p) {
        <span class="card-price">${finalPrice.toLocaleString('ru-RU')} ₽</span>`
     : `<span class="card-price">${p.price.toLocaleString('ru-RU')} ₽</span>`;
 
+  const imgAttr = p.image
+    ? ` data-img="${p.image}" data-name="${p.name}" class="card-image card-image--clickable"`
+    : ` class="card-image"`;
+
   return `
     <div class="product-card">
-      <div class="card-image" style="${bgStyle}">
+      <div${imgAttr} style="${bgStyle}">
         ${badgeHtml}
         <span class="card-qty${totalQty > 0 ? ' visible' : ''}" id="qty-${p.id}">${totalQty}</span>
         ${imageHtml}
@@ -773,6 +777,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('availOverlay')?.addEventListener('click', closeAvailModal);
   document.getElementById('availModalClose')?.addEventListener('click', closeAvailModal);
   document.getElementById('availSaveBtn')?.addEventListener('click', saveAvailability);
+
+  // Лайтбокс — просмотр фото по клику на карточку
+  const lightbox      = document.getElementById('lightbox');
+  const lightboxImg   = document.getElementById('lightboxImg');
+  const lightboxClose = document.getElementById('lightboxClose');
+
+  document.getElementById('productsGrid')?.addEventListener('click', e => {
+    const tile = e.target.closest('.card-image--clickable');
+    if (!tile) return;
+    lightboxImg.src = tile.dataset.img;
+    lightboxImg.alt = tile.dataset.name || '';
+    lightbox.classList.add('open');
+  });
+
+  const closeLightbox = () => {
+    lightbox.classList.remove('open');
+    lightboxImg.src = '';
+  };
+  lightboxClose?.addEventListener('click', closeLightbox);
+  lightbox?.addEventListener('click', e => {
+    if (e.target === lightbox) closeLightbox();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeLightbox();
+  });
 });
 
 // ──────────────────────────────────────────────────────────────

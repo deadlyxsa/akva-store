@@ -1463,6 +1463,59 @@ body::before {
 }
 
 /* ================================================================
+   LIGHTBOX
+================================================================ */
+.lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.92);
+  align-items: center;
+  justify-content: center;
+  animation: lbFadeIn .18s ease;
+}
+.lightbox.open {
+  display: flex;
+}
+@keyframes lbFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.lightbox-img {
+  max-width: 92vw;
+  max-height: 82vh;
+  object-fit: contain;
+  border-radius: 14px;
+  box-shadow: 0 8px 48px rgba(0,0,0,.7);
+  animation: lbZoomIn .18s ease;
+}
+@keyframes lbZoomIn {
+  from { transform: scale(.92); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+.lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+}
+.card-image--clickable {
+  cursor: zoom-in;
+}
+
+/* ================================================================
    УТИЛИТЫ
 ================================================================ */
 .sr-only {
