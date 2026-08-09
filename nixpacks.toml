@@ -2,7 +2,7 @@
 cmds = [
   "rm -rf /app/.venv /root/.cache/pip",
   "python3 -m venv /app/.venv",
-  "/app/.venv/bin/pip install python-telegram-bot==21.3"
+  "/app/.venv/bin/pip install --upgrade python-telegram-bot"
 ]
 
 [start]
