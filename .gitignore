@@ -1,0 +1,5 @@
+.env
+*.json
+!webapp/availability.json
+__pycache__/
+*.pyc

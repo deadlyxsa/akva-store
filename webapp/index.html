@@ -9,7 +9,7 @@
   <title>Akva Store</title>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="style.css?v=11" />
+  <link rel="stylesheet" href="style.css?v=12" />
 </head>
 <body>
 
@@ -26,11 +26,28 @@
         <span class="tagline">Vape · Liquid · Snus</span>
       </div>
     </div>
-    <button class="cart-btn" id="cartButton" aria-label="Корзина">
-      🛒
-      <span class="cart-badge" id="cartBadge" aria-live="polite">0</span>
-    </button>
+    <div class="header-right">
+      <button class="admin-btn" id="adminBtn" aria-label="Управление наличием" style="display:none">⚙️</button>
+      <button class="cart-btn" id="cartButton" aria-label="Корзина">
+        🛒
+        <span class="cart-badge" id="cartBadge" aria-live="polite">0</span>
+      </button>
+    </div>
   </header>
+
+  <!-- МОДАЛКА УПРАВЛЕНИЯ НАЛИЧИЕМ -->
+  <div class="avail-overlay" id="availOverlay"></div>
+  <div class="avail-modal" id="availModal" role="dialog" aria-label="Управление наличием">
+    <div class="avail-modal-handle"></div>
+    <div class="avail-modal-header">
+      <h2 class="avail-modal-title">⚙️ Наличие вкусов</h2>
+      <button class="cart-modal-close" id="availModalClose">✕</button>
+    </div>
+    <div class="avail-body" id="availBody"></div>
+    <div class="avail-footer">
+      <button class="avail-save-btn" id="availSaveBtn">💾 Сохранить</button>
+    </div>
+  </div>
 
   <!-- BANNER -->
   <section class="banner" aria-label="Акции">
@@ -135,6 +152,6 @@
 <!-- TOAST -->
 <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-<script src="app.js?v=15"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

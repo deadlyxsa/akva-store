@@ -157,6 +157,26 @@ let sortOrder      = 'default';  // 'default' | 'asc' | 'desc'
 let activePromo    = null;       // null | { code: string, discount: number }
 const cart = {};
 
+// Наличие вкусов: { "productId:variant": true/false }
+let availability = {};
+// Черновик изменений в панели менеджера
+let availDraft = {};
+
+// ID менеджеров/админа — синхронизируй с bot.py
+const MANAGER_IDS_CLIENT = [878878846, 7555460392];
+
+async function loadAvailability() {
+  try {
+    const r = await fetch('availability.json?t=' + Date.now());
+    if (r.ok) availability = await r.json();
+  } catch (_) {}
+}
+
+function isAvailable(productId, variant) {
+  const key = `${productId}:${variant}`;
+  return availability[key] !== false;  // default true если нет в файле
+}
+
 // ──────────────────────────────────────────────────────────────
 //  TELEGRAM WEBAPP
 // ──────────────────────────────────────────────────────────────
@@ -166,8 +186,14 @@ function tgInit() {
   if (!tg) return;
   tg.ready();
   tg.expand();
-  tg.setHeaderColor?.('#0f172a');
-  tg.setBackgroundColor?.('#0f172a');
+  tg.setHeaderColor?.('#0a0a0a');
+  tg.setBackgroundColor?.('#0a0a0a');
+
+  const uid = tg.initDataUnsafe?.user?.id;
+  if (uid && MANAGER_IDS_CLIENT.includes(uid)) {
+    const btn = document.getElementById('adminBtn');
+    if (btn) btn.style.display = 'flex';
+  }
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -289,8 +315,8 @@ function renderProducts() {
     grid.style.opacity = '1';
     grid.style.transition = 'opacity .2s';
 
-    // Обработчики чипсов вариантов
-    grid.querySelectorAll('.card-chip').forEach(btn => {
+    // Обработчики чипсов вариантов (только доступные)
+    grid.querySelectorAll('.card-chip:not([disabled])').forEach(btn => {
       btn.addEventListener('click', () => {
         addToCart(+btn.dataset.id, btn.dataset.variant);
       });
@@ -314,8 +340,12 @@ function buildCard(p) {
   const chipsHtml = p.variants.map(v => {
     const key = `${p.id}:${v}`;
     const qty = cart[key]?.qty || 0;
-    return `<button class="card-chip${qty > 0 ? ' chip-active' : ''}" data-id="${p.id}" data-variant="${v}">
-      ${v}${qty > 0 ? `<span class="chip-qty">${qty}</span>` : ''}
+    const avail = isAvailable(p.id, v);
+    const cls = avail
+      ? (qty > 0 ? ' chip-active' : '')
+      : ' chip-unavailable';
+    return `<button class="card-chip${cls}" data-id="${p.id}" data-variant="${v}"${!avail ? ' disabled' : ''}>
+      ${avail ? '' : '<span class="chip-x">✕</span>'}${v}${qty > 0 ? `<span class="chip-qty">${qty}</span>` : ''}
     </button>`;
   }).join('');
 
@@ -487,11 +517,13 @@ function refreshCardUI(productId) {
       chipsRow.innerHTML = p.variants.map(v => {
         const key = `${productId}:${v}`;
         const qty = cart[key]?.qty || 0;
-        return `<button class="card-chip${qty > 0 ? ' chip-active' : ''}" data-id="${productId}" data-variant="${v}">
-          ${v}${qty > 0 ? `<span class="chip-qty">${qty}</span>` : ''}
+        const avail = isAvailable(productId, v);
+        const cls = avail ? (qty > 0 ? ' chip-active' : '') : ' chip-unavailable';
+        return `<button class="card-chip${cls}" data-id="${productId}" data-variant="${v}"${!avail ? ' disabled' : ''}>
+          ${avail ? '' : '<span class="chip-x">✕</span>'}${v}${qty > 0 ? `<span class="chip-qty">${qty}</span>` : ''}
         </button>`;
       }).join('');
-      chipsRow.querySelectorAll('.card-chip').forEach(btn => {
+      chipsRow.querySelectorAll('.card-chip:not([disabled])').forEach(btn => {
         btn.addEventListener('click', () => addToCart(+btn.dataset.id, btn.dataset.variant));
       });
     }
@@ -701,8 +733,9 @@ function plural(n) {
 // ──────────────────────────────────────────────────────────────
 //  ИНИЦИАЛИЗАЦИЯ
 // ──────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   tgInit();
+  await loadAvailability();
   renderCategories();
   renderProducts();
 
@@ -745,4 +778,71 @@ document.addEventListener('DOMContentLoaded', () => {
     e.target.value = e.target.value.toUpperCase();
   });
   document.getElementById('promoRemoveBtn')?.addEventListener('click', removePromo);
+
+  // Панель управления наличием
+  document.getElementById('adminBtn')?.addEventListener('click', openAvailModal);
+  document.getElementById('availOverlay')?.addEventListener('click', closeAvailModal);
+  document.getElementById('availModalClose')?.addEventListener('click', closeAvailModal);
+  document.getElementById('availSaveBtn')?.addEventListener('click', saveAvailability);
 });
+
+// ──────────────────────────────────────────────────────────────
+//  ПАНЕЛЬ УПРАВЛЕНИЯ НАЛИЧИЕМ (только менеджеры)
+// ──────────────────────────────────────────────────────────────
+
+function openAvailModal() {
+  availDraft = { ...availability };
+  renderAvailBody();
+  document.getElementById('availOverlay').classList.add('visible');
+  document.getElementById('availModal').classList.add('visible');
+}
+
+function closeAvailModal() {
+  document.getElementById('availOverlay').classList.remove('visible');
+  document.getElementById('availModal').classList.remove('visible');
+}
+
+function renderAvailBody() {
+  const body = document.getElementById('availBody');
+  if (!body) return;
+  body.innerHTML = PRODUCTS.map(p => `
+    <div class="avail-product">
+      <div class="avail-product-name">${p.emoji} ${p.name}</div>
+      <div class="avail-variants">
+        ${p.variants.map(v => {
+          const key = `${p.id}:${v}`;
+          const on = availDraft[key] !== false;
+          return `
+            <div class="avail-row" data-key="${key}">
+              <span class="avail-variant-name">${v}</span>
+              <button class="avail-toggle ${on ? 'avail-on' : 'avail-off'}" data-key="${key}">
+                ${on ? '✅ Есть' : '❌ Нет'}
+              </button>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  body.querySelectorAll('.avail-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      availDraft[key] = !availDraft[key];
+      btn.textContent = availDraft[key] ? '✅ Есть' : '❌ Нет';
+      btn.className = `avail-toggle ${availDraft[key] ? 'avail-on' : 'avail-off'}`;
+      tg?.HapticFeedback?.selectionChanged();
+    });
+  });
+}
+
+async function saveAvailability() {
+  availability = { ...availDraft };
+
+  if (tg?.sendData) {
+    tg.sendData(JSON.stringify({ type: 'availability', data: availability }));
+  }
+
+  closeAvailModal();
+  renderProducts();
+  showToast('✅ Наличие обновлено');
+}
