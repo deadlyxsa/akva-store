@@ -246,7 +246,8 @@ def is_admin(update: Update) -> bool:
 
 def is_manager(update: Update) -> bool:
     """Менеджер или администратор (общение с клиентами, продажи)."""
-    return update.effective_user.id in MANAGER_IDS
+    uid = update.effective_user.id
+    return uid in MANAGER_IDS or uid == ADMIN_ID
 
 
 # ══════════════════════════════════════════════════════════════
@@ -259,8 +260,8 @@ async def notify_managers(
     reply_markup=None,
     exclude_id: int | None = None,
 ) -> None:
-    """Отправляет сообщение всем менеджерам (опционально кроме exclude_id)."""
-    for mid in MANAGER_IDS:
+    """Отправляет сообщение всем менеджерам и админу (опционально кроме exclude_id)."""
+    for mid in MANAGER_IDS | {ADMIN_ID}:
         if mid == exclude_id:
             continue
         try:
@@ -271,7 +272,7 @@ async def notify_managers(
                 parse_mode="HTML",
             )
         except Exception as e:
-            logger.warning("Не удалось уведомить менеджера %s: %s", mid, e)
+            logger.warning("Не удалось уведомить %s: %s", mid, e)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -396,8 +397,13 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         f"👋 Привет, <b>{update.effective_user.first_name}</b>!\n\n"
         "Добро пожаловать в <b>Akva Store</b> 🌊\n"
-        "Лучший вейп-шоп с быстрой доставкой!\n\n"
-        "👇 Нажми <b>«🛍 Магазин»</b>, чтобы открыть каталог",
+        "Нефтеюганск · Вейп · Жидкости · Расходники\n\n"
+        "📋 <b>Как сделать заказ:</b>\n"
+        "1️⃣ Нажми <b>«🛍 Магазин»</b> — открой каталог\n"
+        "2️⃣ Выбери товар и вкус, добавь в корзину\n"
+        "3️⃣ Нажми <b>«Оформить заказ»</b> и подтверди\n"
+        "4️⃣ Жди — менеджер напишет тебе здесь 💙\n\n"
+        "💬 Есть вопросы? Нажми <b>«💬 Связаться с менеджером»</b>",
         reply_markup=main_keyboard(),
         parse_mode="HTML",
     )
@@ -800,7 +806,7 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
     query      = update.callback_query
     manager_id = query.from_user.id
 
-    if manager_id not in MANAGER_IDS:
+    if manager_id not in MANAGER_IDS and manager_id != ADMIN_ID:
         await query.answer("⛔ Доступ запрещён.")
         return
 
@@ -995,14 +1001,15 @@ def main() -> None:
     ))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    # Текст от менеджеров (любой из MANAGER_IDS)
+    all_manager_ids = list(MANAGER_IDS | {ADMIN_ID})
+    # Текст от менеджеров и админа
     app.add_handler(MessageHandler(
-        filters.Chat(list(MANAGER_IDS)) & filters.TEXT & ~filters.COMMAND,
+        filters.Chat(all_manager_ids) & filters.TEXT & ~filters.COMMAND,
         handle_manager_text,
     ))
-    # Текст от клиентов (не менеджеры)
+    # Текст от клиентов (не менеджеры и не админ)
     app.add_handler(MessageHandler(
-        ~filters.Chat(list(MANAGER_IDS)) & filters.TEXT & ~filters.COMMAND,
+        ~filters.Chat(all_manager_ids) & filters.TEXT & ~filters.COMMAND,
         handle_customer_text,
     ))
 
