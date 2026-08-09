@@ -1,0 +1,9 @@
+[phases.install]
+cmds = [
+  "rm -rf /app/.venv /root/.cache/pip",
+  "python3 -m venv /app/.venv",
+  "/app/.venv/bin/pip install python-telegram-bot==21.3"
+]
+
+[start]
+cmd = "/app/.venv/bin/python bot.py"
