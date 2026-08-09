@@ -140,11 +140,11 @@ const PROMO_CODES = {
 //  КАТЕГОРИИ
 // ──────────────────────────────────────────────────────────────
 const CATEGORIES = [
-  { id: 'pods',         icon: '🌊', label: 'Под-системы' },
-  { id: 'liquids',      icon: '💧', label: 'Жидкости'    },
-  { id: 'disposables',  icon: '🧊', label: 'Одноразки'   },
-  { id: 'snus',         icon: '💨', label: 'Снюс'        },
-  { id: 'accessories',  icon: '🔧', label: 'Расходники'  },
+  { id: 'pods',         img: 'images/Под-системы.png', label: 'Под-системы' },
+  { id: 'liquids',      img: 'images/Жидкость.png',    label: 'Жидкости'    },
+  { id: 'disposables',  img: 'images/Одноразки.png',   label: 'Одноразки', imgSize: 38  },
+  { id: 'snus',         img: 'images/снюс.png',        label: 'Снюс'        },
+  { id: 'accessories',  img: 'images/Расходники.png',  label: 'Расходники'  },
 ];
 
 // ──────────────────────────────────────────────────────────────
@@ -177,13 +177,63 @@ function renderCategories() {
   const container = document.getElementById('categories');
   container.innerHTML = CATEGORIES.map(cat => `
     <button class="cat-btn${cat.id === activeCategory ? ' active' : ''}" data-cat="${cat.id}">
-      <span class="icon">${cat.icon}</span>
+      ${cat.img
+        ? `<img src="${cat.img}" class="cat-icon-img" alt="${cat.label}" draggable="false"${cat.imgSize ? ` style="width:${cat.imgSize}px;height:${cat.imgSize}px"` : ''} />`
+        : `<span class="icon">${cat.icon}</span>`}
       <span class="label">${cat.label}</span>
     </button>
   `).join('');
   container.querySelectorAll('.cat-btn').forEach(btn =>
     btn.addEventListener('click', () => setCategory(btn.dataset.cat))
   );
+  enableDragScroll(container);
+}
+
+function enableDragScroll(el) {
+  let isDown = false, startX = 0, scrollLeft = 0, moved = false;
+
+  el.addEventListener('dragstart', e => e.preventDefault());
+
+  el.addEventListener('mousedown', e => {
+    isDown = true; moved = false;
+    startX = e.pageX - el.offsetLeft;
+    scrollLeft = el.scrollLeft;
+    el.style.cursor = 'grabbing';
+    el.style.userSelect = 'none';
+  });
+
+  const stop = () => { isDown = false; el.style.cursor = ''; el.style.userSelect = ''; };
+  el.addEventListener('mouseleave', stop);
+  el.addEventListener('mouseup', stop);
+  window.addEventListener('mouseup', stop);
+
+  el.addEventListener('mousemove', e => {
+    if (!isDown) return;
+    e.preventDefault();
+    const walk = (e.pageX - el.offsetLeft - startX) * 1.2;
+    if (Math.abs(walk) > 4) moved = true;
+    el.scrollLeft = scrollLeft - walk;
+    updateCatScroll(el);
+  });
+
+  el.querySelectorAll('.cat-btn').forEach(btn => {
+    btn.addEventListener('click', e => { if (moved) e.stopImmediatePropagation(); }, true);
+  });
+
+  el.addEventListener('scroll', () => updateCatScroll(el), { passive: true });
+  setTimeout(() => updateCatScroll(el), 50);
+}
+
+function updateCatScroll(el) {
+  const thumb = document.getElementById('catScrollThumb');
+  if (!thumb) return;
+  const max = el.scrollWidth - el.clientWidth;
+  if (max <= 0) { thumb.parentElement.style.display = 'none'; return; }
+  thumb.parentElement.style.display = '';
+  const pct = el.scrollLeft / max;
+  const trackW = thumb.parentElement.offsetWidth;
+  const thumbW = thumb.offsetWidth;
+  thumb.style.transform = `translateX(${pct * (trackW - thumbW)}px)`;
 }
 
 function setCategory(catId) {

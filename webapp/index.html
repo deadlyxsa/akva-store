@@ -9,7 +9,7 @@
   <title>Akva Store</title>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=11" />
 </head>
 <body>
 
@@ -39,8 +39,17 @@
       <p class="banner-sub">Лучший выбор вейп-товаров</p>
       <div class="banner-pill">✨ Бесплатная доставка от 4 500 ₽</div>
     </div>
-    <div class="banner-wave" aria-hidden="true">💧</div>
+    <div class="banner-cloud" aria-hidden="true"></div>
   </section>
+
+  <!-- КАТЕГОРИИ -->
+  <div class="section-label-row">
+    <p class="section-label">Категории</p>
+    <div class="cat-scroll-track" id="catScrollTrack">
+      <div class="cat-scroll-thumb" id="catScrollThumb"></div>
+    </div>
+  </div>
+  <nav class="categories" id="categories" aria-label="Категории товаров"></nav>
 
   <!-- ПОИСК -->
   <div class="search-wrap">
@@ -53,10 +62,6 @@
       autocomplete="off"
     />
   </div>
-
-  <!-- КАТЕГОРИИ -->
-  <p class="section-label">Категории</p>
-  <nav class="categories" id="categories" aria-label="Категории товаров"></nav>
 
   <!-- СОРТИРОВКА + СЧЁТЧИК -->
   <div class="sort-row">
@@ -130,6 +135,6 @@
 <!-- TOAST -->
 <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-<script src="app.js?v=10"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
