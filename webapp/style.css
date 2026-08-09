@@ -62,7 +62,7 @@ body::before {
   z-index: 1;
   max-width: 480px;
   margin: 0 auto;
-  padding-top: max(120px, 42vw);  /* совпадает с высотой хедера */
+  padding-top: 0;
   padding-bottom: 90px;    /* место под MainButton */
 }
 
@@ -70,44 +70,45 @@ body::before {
    HEADER
 ================================================================ */
 .header {
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
   z-index: 100;
-  height: 42vw;        /* пропорционально ширине экрана */
-  max-height: 180px;   /* не выше 180px на широких экранах */
-  min-height: 120px;   /* не ниже 120px */
-  background: #060d18;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  background: rgba(15,23,42,.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--glass-bd);
 }
 
-/* Логотип — фон на всю ширину хедера */
 .logo {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .logo-icon {
-  width: 100%;
-  height: 100%;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 0 18px rgba(14,165,233,.5);
 }
 
 .logo-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 45%;
+  object-position: center;
   display: block;
 }
 
-/* Кнопка корзины поверх логотипа */
+/* Кнопка корзины в хедере */
 .cart-btn {
-  position: absolute !important;
-  top: 12px;
-  right: 12px;
-  z-index: 10;
+  position: relative;
 }
 
 .logo-text {
