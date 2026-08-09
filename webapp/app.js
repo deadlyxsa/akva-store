@@ -14,12 +14,14 @@ const PRODUCTS = [
     name: 'XROS 4', subtitle: 'Голубой',
     price: 3490, badge: 'Хит', emoji: '💎',
     gradient: ['#0369a1', '#0ea5e9'],
+    image: null,  // пример с картинкой: image: 'images/xros4.jpg'
   },
   {
     id: 2, category: 'pods',
     name: 'Aegis Hero 3', subtitle: 'Защитный корпус',
     price: 4990, badge: 'Новинка', emoji: '🛡️',
     gradient: ['#1e3a5f', '#38bdf8'],
+    image: null,
   },
 
   // ── Жидкости ─────────────────────────────────────────────────
@@ -28,12 +30,14 @@ const PRODUCTS = [
     name: 'Husky Double Ice', subtitle: 'Черника-Мята',
     price: 890, badge: 'Хит', emoji: '🫐',
     gradient: ['#312e81', '#6366f1'],
+    image: null,
   },
   {
     id: 4, category: 'liquids',
     name: 'Electro Jam', subtitle: 'Тропик-Льдинка',
     price: 750, badge: null, emoji: '⚡',
     gradient: ['#065f46', '#34d399'],
+    image: null,
   },
 
   // ── Одноразки ─────────────────────────────────────────────────
@@ -42,12 +46,14 @@ const PRODUCTS = [
     name: 'Elf Bar 10000', subtitle: 'Ледяной арбуз',
     price: 1490, badge: 'Хит', emoji: '🍉',
     gradient: ['#7f1d1d', '#f87171'],
+    image: null,
   },
   {
     id: 6, category: 'disposables',
     name: 'Lost Mary 12000', subtitle: 'Манго-персик',
     price: 1690, badge: 'Новинка', emoji: '🥭',
     gradient: ['#78350f', '#fbbf24'],
+    image: null,
   },
 
   // ── Снюс ──────────────────────────────────────────────────────
@@ -56,12 +62,14 @@ const PRODUCTS = [
     name: 'Iceberg', subtitle: 'Крио-мята',
     price: 390, badge: 'Хит', emoji: '🧊',
     gradient: ['#0c4a6e', '#7dd3fc'],
+    image: null,
   },
   {
     id: 8, category: 'snus',
     name: 'Siberia', subtitle: 'Белая серия',
     price: 350, badge: null, emoji: '❄️',
     gradient: ['#1e293b', '#94a3b8'],
+    image: null,
   },
 ];
 
@@ -143,15 +151,24 @@ function renderProducts() {
 
 function buildCard(p) {
   const qty = cart[p.id] || 0;
-  const bg  = `linear-gradient(135deg,${p.gradient[0]},${p.gradient[1]})`;
   const badgeHtml = p.badge
     ? `<span class="card-badge ${badgeClass(p.badge)}">${p.badge}</span>` : '';
+
+  // Если есть своя картинка — показываем её, иначе градиент с эмодзи
+  const imageHtml = p.image
+    ? `<img src="${p.image}" alt="${p.name}" class="card-img" loading="lazy" />`
+    : `<span class="product-emoji">${p.emoji}</span>`;
+
+  const bgStyle = p.image
+    ? `background:#0f172a`
+    : `background:linear-gradient(135deg,${p.gradient[0]},${p.gradient[1]})`;
+
   return `
     <div class="product-card">
-      <div class="card-image" style="background:${bg}">
+      <div class="card-image" style="${bgStyle}">
         ${badgeHtml}
         <span class="card-qty${qty > 0 ? ' visible' : ''}" id="qty-${p.id}">${qty}</span>
-        <span class="product-emoji">${p.emoji}</span>
+        ${imageHtml}
       </div>
       <div class="card-body">
         <div class="card-name">${p.name}</div>

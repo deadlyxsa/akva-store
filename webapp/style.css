@@ -72,32 +72,37 @@ body::before {
   position: sticky;
   top: 0;
   z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px 12px;
-  background: rgba(15,23,42,.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  height: 110px;
+  background: #060d18;
   border-bottom: 1px solid var(--glass-bd);
 }
 
+/* Логотип — фон на всю ширину хедера */
 .logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
 }
 
 .logo-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--bright), var(--neon));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  box-shadow: 0 0 18px rgba(14,165,233,.5);
+  width: 100%;
+  height: 100%;
+}
+
+.logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 50%;
+  display: block;
+}
+
+/* Кнопка корзины поверх логотипа */
+.cart-btn {
+  position: absolute !important;
+  top: 14px;
+  right: 14px;
+  z-index: 10;
 }
 
 .logo-text {
@@ -128,11 +133,12 @@ body::before {
 
 /* Кнопка корзины в хедере */
 .cart-btn {
-  position: relative;
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: var(--glass-bg);
+  background: rgba(15,23,42,.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--glass-bd);
   cursor: pointer;
   display: flex;
@@ -144,7 +150,7 @@ body::before {
 }
 
 .cart-btn:active { transform: scale(.92); }
-.cart-btn:hover  { background: rgba(255,255,255,.12); }
+.cart-btn:hover  { background: rgba(255,255,255,.15); }
 
 .cart-badge {
   position: absolute;
@@ -375,6 +381,16 @@ body::before {
 @keyframes floatEmoji {
   0%, 100% { transform: translateY(0); }
   50%       { transform: translateY(-5px); }
+}
+
+/* Своя картинка товара */
+.card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
 }
 
 /* Блики на изображении */
