@@ -5,6 +5,7 @@ Telegram-бот магазина Akva Store
 """
 
 import base64
+import html
 import json
 import logging
 import os
@@ -64,6 +65,13 @@ MAX_PAYLOAD_BYTES = 8_192    # максимальный размер payload о�
 MAX_PROMO_FAILS   = 5     # неудачных попыток до блокировки
 PROMO_FAIL_WINDOW = 3600  # секунд (1 час) — окно подсчёта попыток
 
+# ── Защита от абуза клиентами ─────────────────────────────────
+MSG_RATE_LIMIT   = 5     # сообщений за MSG_RATE_WINDOW секунд
+MSG_RATE_WINDOW  = 60    # секунд
+MAX_MSG_LEN      = 1000  # максимальная длина сообщения клиента
+CONTACT_COOLDOWN = 30    # секунд между нажатиями «Связаться с менеджером»
+MAX_CUSTOMERS    = 500   # максимум записей в customer_chats
+
 # ── Каталог товаров (единственный источник цен — сервер) ─────
 # ОБЯЗАТЕЛЬНО синхронизируй цены с app.js при их изменении
 PRODUCTS_CATALOG: dict[int, dict] = {
@@ -115,6 +123,11 @@ promo_usage:      dict[str, int]  = {}
 promo_user_usage: dict[str, list] = {}   # {код: [user_id, ...]}
 promo_fail_log:   dict[int, list] = {}   # {user_id: [timestamp, ...]}
 
+# Счётчики сообщений клиентов: {user_id: [timestamp, ...]}
+msg_rate: dict[int, list] = {}
+# Время последнего нажатия «Связаться с менеджером»: {user_id: float}
+contact_last: dict[int, float] = {}
+
 
 # ══════════════════════════════════════════════════════════════
 #   ФАЙЛЫ ПЕРСИСТЕНТНОСТИ
@@ -125,6 +138,8 @@ PROMO_USAGE_FILE     = _BASE / "promo_usage.json"
 PROMO_USER_FILE      = _BASE / "promo_user_usage.json"
 ORDER_COOLDOWNS_FILE = _BASE / "order_cooldowns.json"
 AVAILABILITY_FILE    = _BASE / "webapp" / "availability.json"
+CUSTOMER_CHATS_FILE  = _BASE / "customer_chats.json"
+SUPPORT_USERS_FILE   = _BASE / "support_users.json"
 
 
 def load_promo_usage() -> None:
@@ -180,6 +195,52 @@ def save_order_cooldowns() -> None:
         )
     except Exception as e:
         logger.warning("save order_cooldowns: %s", e)
+
+def load_customer_chats() -> None:
+    if CUSTOMER_CHATS_FILE.exists():
+        try:
+            data = json.loads(CUSTOMER_CHATS_FILE.read_text(encoding="utf-8"))
+            customer_chats.update({int(k): v for k, v in data.items()})
+        except Exception as e:
+            logger.warning("customer_chats.json: %s", e)
+
+def save_customer_chats() -> None:
+    try:
+        CUSTOMER_CHATS_FILE.write_text(
+            json.dumps({str(k): v for k, v in customer_chats.items()},
+                       ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        logger.warning("save customer_chats: %s", e)
+
+def load_support_users() -> None:
+    if SUPPORT_USERS_FILE.exists():
+        try:
+            data = json.loads(SUPPORT_USERS_FILE.read_text(encoding="utf-8"))
+            support_users.update(int(u) for u in data)
+        except Exception as e:
+            logger.warning("support_users.json: %s", e)
+
+def save_support_users() -> None:
+    try:
+        SUPPORT_USERS_FILE.write_text(
+            json.dumps(list(support_users), ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        logger.warning("save support_users: %s", e)
+
+def is_msg_rate_limited(user_id: int) -> bool:
+    """True если клиент превысил лимит сообщений."""
+    now = time.time()
+    log = [t for t in msg_rate.get(user_id, []) if now - t < MSG_RATE_WINDOW]
+    if len(log) >= MSG_RATE_LIMIT:
+        msg_rate[user_id] = log
+        return True
+    log.append(now)
+    msg_rate[user_id] = log
+    return False
 
 
 # ══════════════════════════════════════════════════════════════
@@ -363,10 +424,10 @@ def panel_text() -> str:
 def chat_text(uid: int) -> str:
     info = customer_chats.get(uid, {})
     return (
-        f"💬 <b>Чат с {info.get('name', 'Клиент')}</b>\n"
-        f"📱 {info.get('username', 'нет username')} | <code>{uid}</code>\n\n"
+        f"💬 <b>Чат с {html.escape(info.get('name', 'Клиент'))}</b>\n"
+        f"📱 {html.escape(info.get('username', 'нет username'))} | <code>{uid}</code>\n\n"
         f"🕐 Последнее сообщение в {info.get('last_time', '')}:\n"
-        f"<i>«{info.get('last_msg', '—')}»</i>\n\n"
+        f"<i>«{html.escape(info.get('last_msg', '—'))}»</i>\n\n"
         "✏️ <b>Вы пишете этому клиенту.</b>\n"
         "Отправьте текст — он получит ваш ответ.\n\n"
         "<i>← Все чаты — вернуться к списку\n"
@@ -393,7 +454,10 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    support_users.discard(update.effective_user.id)
+    uid = update.effective_user.id
+    if uid in support_users:
+        support_users.discard(uid)
+        save_support_users()
     await update.message.reply_text(
         f"👋 Привет, <b>{update.effective_user.first_name}</b>!\n\n"
         "Добро пожаловать в <b>Akva Store</b> 🌊\n"
@@ -408,10 +472,15 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def btn_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if is_manager(update):
         return
-    support_users.add(update.effective_user.id)
+    uid = update.effective_user.id
+    now = time.time()
+    if now - contact_last.get(uid, 0) < CONTACT_COOLDOWN:
+        return  # молчим, не спамим ответами
+    contact_last[uid] = now
+    support_users.add(uid)
+    save_support_users()
     await update.message.reply_text(
         "💬 Напиши свой вопрос — менеджер ответит здесь 👇",
-        parse_mode="HTML",
     )
 
 
@@ -455,12 +524,6 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Менеджеры не могут делать заказы через бота
     if is_manager(update):
-        return
-
-    # ── 1. Размер payload ─────────────────────────────────────
-    if len(raw.encode("utf-8")) > MAX_PAYLOAD_BYTES:
-        logger.warning("SECURITY payload too large from %s (%d bytes)", user.id, len(raw))
-        await update.message.reply_text("❌ Некорректный запрос.")
         return
 
     # ── 2. Кулдаун (сохраняется на диске) ────────────────────
@@ -524,7 +587,7 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
         product = PRODUCTS_CATALOG[pid]
         validated_items.append({
-            'name':  f"{product['name']} ({variant.strip()})",
+            'name':  f"{product['name']} ({html.escape(variant.strip())})",
             'price': product['price'],
             'qty':   qty,
             'total': product['price'] * qty,
@@ -599,8 +662,27 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         total_msg = f"💰 Итого: <b>{final_total} руб.</b>"
 
+    # ── 7. Сохраняем клиента ──────────────────────────────────
+    username = f"@{user.username}" if user.username else "нет username"
+
+    # Ограничение памяти: не накапливаем бесконечный список
+    if user.id not in customer_chats and len(customer_chats) >= MAX_CUSTOMERS:
+        logger.warning("MAX_CUSTOMERS reached, dropping order from %s", user.id)
+        await update.message.reply_text("❌ Сервис временно недоступен. Обратитесь к менеджеру.")
+        return
+
+    customer_chats[user.id] = {
+        "name":      user.full_name,
+        "username":  username,
+        "unread":    customer_chats.get(user.id, {}).get("unread", 0),
+        "last_msg":  f"Заказ на {final_total} руб.",
+        "last_time": now_str(),
+    }
+
     # Открываем чат — клиент сможет отвечать менеджеру прямо здесь
     support_users.add(user.id)
+    save_support_users()
+    save_customer_chats()
 
     await update.message.reply_text(
         f"✅ <b>Заказ принят!</b>\n\n{lines}\n\n{total_msg}",
@@ -621,17 +703,10 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         parse_mode="HTML",
     )
 
-    # ── 7. Сохраняем клиента ──────────────────────────────────
-    username = f"@{user.username}" if user.username else "нет username"
-    customer_chats[user.id] = {
-        "name":      user.full_name,
-        "username":  username,
-        "unread":    customer_chats.get(user.id, {}).get("unread", 0),
-        "last_msg":  f"Заказ на {final_total} руб.",
-        "last_time": now_str(),
-    }
-
     # ── 8. Уведомление ВСЕМ менеджерам ───────────────────────
+    safe_name     = html.escape(user.full_name)
+    safe_username = html.escape(username)
+
     promo_admin = f"\n{promo_line}\n" if promo_line else (
         f"\n{promo_note}\n" if promo_note else ""
     )
@@ -643,8 +718,8 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
     order_text = (
         f"🛒 <b>Новый заказ!</b>\n\n"
-        f"👤 <a href='tg://user?id={user.id}'>{user.full_name}</a>\n"
-        f"📱 {username} | <code>{user.id}</code>\n\n"
+        f"👤 <a href='tg://user?id={user.id}'>{safe_name}</a>\n"
+        f"📱 {safe_username} | <code>{user.id}</code>\n\n"
         f"📦 <b>Состав:</b>\n{lines}\n"
         f"{promo_admin}\n"
         f"{total_admin}\n"
@@ -657,15 +732,32 @@ async def handle_customer_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -
     """Сообщение клиента → пересылаем всем менеджерам."""
     user = update.effective_user
 
-    # Игнорируем менеджеров
     if is_manager(update):
         return
     if user.id not in support_users:
         return
 
-    text     = update.message.text or "[медиа-сообщение]"
+    text = update.message.text or "[медиа-сообщение]"
+
+    # Лимит длины сообщения
+    if len(text) > MAX_MSG_LEN:
+        await update.message.reply_text(
+            f"⚠️ Сообщение слишком длинное (максимум {MAX_MSG_LEN} символов)."
+        )
+        return
+
+    # Лимит частоты сообщений
+    if is_msg_rate_limited(user.id):
+        await update.message.reply_text("⏳ Не так быстро — подожди немного.")
+        return
+
     username = f"@{user.username}" if user.username else "нет username"
     t        = now_str()
+
+    # Ограничение памяти
+    if user.id not in customer_chats and len(customer_chats) >= MAX_CUSTOMERS:
+        logger.warning("MAX_CUSTOMERS reached, dropping msg from %s", user.id)
+        return
 
     prev = customer_chats.get(user.id, {}).get("unread", 0)
     customer_chats[user.id] = {
@@ -675,12 +767,17 @@ async def handle_customer_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -
         "last_msg":  text[:80],
         "last_time": t,
     }
+    save_customer_chats()
+
+    safe_name     = html.escape(user.full_name)
+    safe_username = html.escape(username)
+    safe_text     = html.escape(text)
 
     msg_text = (
         f"📩 <b>Сообщение от клиента</b>\n\n"
-        f"👤 <a href='tg://user?id={user.id}'>{user.full_name}</a>\n"
-        f"📱 {username} | <code>{user.id}</code>\n\n"
-        f"✉️ {text}\n\n"
+        f"👤 <a href='tg://user?id={user.id}'>{safe_name}</a>\n"
+        f"📱 {safe_username} | <code>{user.id}</code>\n\n"
+        f"✉️ {safe_text}\n\n"
         f"🕐 {t}"
     )
     await notify_managers(ctx, msg_text, reply_markup=new_msg_kb(user.id, user.first_name))
@@ -993,6 +1090,8 @@ def main() -> None:
     load_promo_usage()
     load_promo_user_usage()
     load_order_cooldowns()
+    load_customer_chats()
+    load_support_users()
 
     app = Application.builder().token(BOT_TOKEN).build()
 
