@@ -16,7 +16,7 @@ const PRODUCTS = [
     price: 450, badge: 'Хит', emoji: '💀',
     strength: '80 мг',
     gradient: ['#1a0030', '#7c3aed'],
-    image: null,
+    image: 'images/isterika x самоубийца v.2.jpg',
   },
   {
     id: 2, category: 'liquids',
@@ -26,7 +26,7 @@ const PRODUCTS = [
     price: 400, badge: null, emoji: '🧪',
     strength: '60 мг',
     gradient: ['#064e3b', '#34d399'],
-    image: null,
+    image: 'images/Isterika Classic Salt.jpg',
   },
   {
     id: 3, category: 'liquids',
@@ -36,7 +36,7 @@ const PRODUCTS = [
     price: 400, badge: null, emoji: '👾',
     strength: '60 мг',
     gradient: ['#14532d', '#4ade80'],
-    image: null,
+    image: 'images/Monster Hardcore.jpg',
   },
   {
     id: 4, category: 'liquids',
@@ -46,7 +46,7 @@ const PRODUCTS = [
     price: 400, badge: null, emoji: '🍋',
     strength: '60 мг',
     gradient: ['#14532d', '#86efac'],
-    image: null,
+    image: 'images/Monster Sourline.jpg',
   },
   {
     id: 5, category: 'liquids',
@@ -68,7 +68,7 @@ const PRODUCTS = [
     price: 1900, badge: 'Новинка', emoji: '🌸',
     strength: null,
     gradient: ['#831843', '#fb7185'],
-    image: null,
+    image: 'images/Vaporesso Xros 6 mini.jpg',
   },
   {
     id: 7, category: 'pods',
@@ -78,7 +78,7 @@ const PRODUCTS = [
     price: 1700, badge: null, emoji: '⚡',
     strength: null,
     gradient: ['#1e293b', '#94a3b8'],
-    image: null,
+    image: 'images/Thelema Elite S.jpg',
   },
 
   // ── Расходники ────────────────────────────────────────────────
@@ -90,7 +90,7 @@ const PRODUCTS = [
     price: 350, badge: null, emoji: '🫙',
     strength: null,
     gradient: ['#1e3a5f', '#38bdf8'],
-    image: null,
+    image: 'images/Losv Vape E-Plus.jpg',
   },
   {
     id: 9, category: 'accessories',
@@ -100,7 +100,7 @@ const PRODUCTS = [
     price: 280, badge: null, emoji: '🔩',
     strength: null,
     gradient: ['#422006', '#f97316'],
-    image: null,
+    image: 'images/Испаритель к5.jpg',
   },
   {
     id: 10, category: 'accessories',
@@ -110,7 +110,7 @@ const PRODUCTS = [
     price: 300, badge: null, emoji: '🫙',
     strength: null,
     gradient: ['#0369a1', '#0ea5e9'],
-    image: null,
+    image: 'images/картридж хрос.png',
   },
 ];
 
