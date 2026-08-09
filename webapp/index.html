@@ -85,9 +85,37 @@
   </div>
 </div>
 
+<!-- ════════════════════════════════════════
+     МОДАЛКА КОРЗИНЫ
+════════════════════════════════════════ -->
+<div class="cart-modal-overlay" id="cartOverlay"></div>
+<div class="cart-modal" id="cartModal" role="dialog" aria-label="Корзина">
+  <div class="cart-modal-handle"></div>
+  <div class="cart-modal-header">
+    <h2 class="cart-modal-title">🛒 Ваш заказ</h2>
+    <button class="cart-modal-close" id="cartModalClose" aria-label="Закрыть">✕</button>
+  </div>
+
+  <!-- Список товаров в корзине -->
+  <div class="cart-items" id="cartItems">
+    <!-- Заполняется через JS -->
+  </div>
+
+  <!-- Итого + кнопка отправки -->
+  <div class="cart-modal-footer">
+    <div class="cart-footer-row">
+      <span class="cart-footer-label">Итого</span>
+      <span class="cart-footer-total" id="cartModalTotal">0 ₽</span>
+    </div>
+    <button class="confirm-btn" id="confirmOrderBtn">
+      Оформить заказ 🚀
+    </button>
+  </div>
+</div>
+
 <!-- TOAST-уведомление -->
 <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-<script src="app.js"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
