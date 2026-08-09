@@ -612,6 +612,14 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "Пример: <i>16А мкр, д. 5, подъезд 2, кв. 47</i>",
         parse_mode="HTML",
     )
+    await update.message.reply_text(
+        "🚪 <b>Укажи способ получения:</b>\n\n"
+        "— оставить у двери\n"
+        "— выйду и заберу\n\n"
+        "📞 По желанию укажи номер телефона, чтобы курьер смог связаться с тобой, "
+        "если не будешь отвечать в Telegram.",
+        parse_mode="HTML",
+    )
 
     # ── 7. Сохраняем клиента ──────────────────────────────────
     username = f"@{user.username}" if user.username else "нет username"
