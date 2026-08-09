@@ -76,6 +76,7 @@ PRODUCTS_CATALOG: dict[int, dict] = {
     7: {'name': 'Lost Vape Thelema Elite S',           'price': 1700},
     8: {'name': 'Картридж Lost Vape E-plus Dual Mesh', 'price': 350},
     9: {'name': 'Испаритель K-5 (70-90W)',             'price': 280},
+    10: {'name': 'Картридж Vaporesso XROS',            'price': 300},
 }
 
 # ── Промокоды по умолчанию (синхронизируй с app.js) ──────────

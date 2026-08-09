@@ -102,6 +102,16 @@ const PRODUCTS = [
     gradient: ['#422006', '#f97316'],
     image: null,
   },
+  {
+    id: 10, category: 'accessories',
+    name: 'Картридж Vaporesso XROS',
+    variantLabel: 'Объём',
+    variants: ['2 мл', '3 мл'],
+    price: 300, badge: null, emoji: '🫙',
+    strength: null,
+    gradient: ['#0369a1', '#0ea5e9'],
+    image: null,
+  },
 ];
 
 // ──────────────────────────────────────────────────────────────
