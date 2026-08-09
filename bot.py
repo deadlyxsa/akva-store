@@ -52,8 +52,8 @@ GITHUB_AVL_PATH = "webapp/availability.json"
 # MANAGER_IDS — могут общаться с клиентами (/panel /write /clients)
 # Админ автоматически является менеджером.
 # Чтобы добавить менеджера: вставь его Telegram user_id в MANAGER_IDS.
-ADMIN_ID: int       = 878878846
-MANAGER_IDS: set[int] = {7555460392}   # ← добавляй сюда ID менеджеров
+ADMIN_IDS: set[int]   = {878878846, 1947509265}   # ← добавляй сюда ID админов
+MANAGER_IDS: set[int] = {7555460392, 7883720545}  # ← добавляй сюда ID менеджеров
 
 # ── Антиспам ──────────────────────────────────────────────────
 ORDER_COOLDOWN    = 5 * 60   # секунд между заказами одного пользователя
@@ -303,12 +303,12 @@ def push_availability_github(data: dict) -> bool:
 
 def is_admin(update: Update) -> bool:
     """Только администратор (управление ботом и промокодами)."""
-    return update.effective_user.id == ADMIN_ID
+    return update.effective_user.id in ADMIN_IDS
 
 def is_manager(update: Update) -> bool:
     """Менеджер или администратор (общение с клиентами, продажи)."""
     uid = update.effective_user.id
-    return uid in MANAGER_IDS or uid == ADMIN_ID
+    return uid in MANAGER_IDS or uid in ADMIN_IDS
 
 
 # ══════════════════════════════════════════════════════════════
@@ -322,7 +322,7 @@ async def notify_managers(
     exclude_id: int | None = None,
 ) -> None:
     """Отправляет сообщение всем менеджерам и админу (опционально кроме exclude_id)."""
-    for mid in MANAGER_IDS | {ADMIN_ID}:
+    for mid in MANAGER_IDS | ADMIN_IDS:
         if mid == exclude_id:
             continue
         try:
@@ -912,7 +912,7 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
     query      = update.callback_query
     manager_id = query.from_user.id
 
-    if manager_id not in MANAGER_IDS and manager_id != ADMIN_ID:
+    if manager_id not in MANAGER_IDS and manager_id not in ADMIN_IDS:
         await query.answer("⛔ Доступ запрещён.")
         return
 
@@ -1109,7 +1109,7 @@ def main() -> None:
     ))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    all_manager_ids = list(MANAGER_IDS | {ADMIN_ID})
+    all_manager_ids = list(MANAGER_IDS | ADMIN_IDS)
     # Текст от менеджеров и админа
     app.add_handler(MessageHandler(
         filters.Chat(all_manager_ids) & filters.TEXT & ~filters.COMMAND,
@@ -1121,7 +1121,7 @@ def main() -> None:
         handle_customer_text,
     ))
 
-    logger.info("✅ Akva Store бот запущен | Админ: %s | Менеджеры: %s", ADMIN_ID, MANAGER_IDS)
+    logger.info("✅ Akva Store бот запущен | Админы: %s | Менеджеры: %s", ADMIN_IDS, MANAGER_IDS)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
