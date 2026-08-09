@@ -56,7 +56,7 @@ const PRODUCTS = [
     price: 400, badge: null, emoji: '💣',
     strength: '80 мг',
     gradient: ['#450a0a', '#f87171'],
-    image: null,
+    image: 'images/убивашка.pnb.PNG',
   },
 
   // ── Под-системы ──────────────────────────────────────────────
