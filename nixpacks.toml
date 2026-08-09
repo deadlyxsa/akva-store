@@ -1,5 +1,9 @@
 [phases.install]
-cmds = ["pip install --no-cache-dir -r requirements.txt"]
+cmds = [
+  "rm -rf /app/.venv /root/.cache/pip",
+  "python3 -m venv /app/.venv",
+  "/app/.venv/bin/pip install python-telegram-bot==21.3"
+]
 
 [start]
-cmd = "python bot.py"
+cmd = "/app/.venv/bin/python bot.py"
