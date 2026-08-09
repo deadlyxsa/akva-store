@@ -67,18 +67,15 @@ PROMO_FAIL_WINDOW = 3600  # секунд (1 час) — окно подсчёт�
 # ── Каталог товаров (единственный источник цен — сервер) ─────
 # ОБЯЗАТЕЛЬНО синхронизируй цены с app.js при их изменении
 PRODUCTS_CATALOG: dict[int, dict] = {
-    1:  {'name': 'XROS 4',                  'price': 3490},
-    2:  {'name': 'Aegis Hero 3',            'price': 4990},
-    3:  {'name': 'Husky Double Ice',        'price': 890},
-    4:  {'name': 'Electro Jam',             'price': 750},
-    5:  {'name': 'Elf Bar 10000',           'price': 1490},
-    6:  {'name': 'Lost Mary 12000',         'price': 1690},
-    7:  {'name': 'Iceberg',                 'price': 390},
-    8:  {'name': 'Siberia',                 'price': 350},
-    9:  {'name': 'Испаритель XROS',         'price': 390},
-    10: {'name': 'Картридж XROS 3',         'price': 490},
-    11: {'name': 'Испаритель Aegis',        'price': 450},
-    12: {'name': 'Ватные палочки (100 шт)', 'price': 150},
+    1: {'name': 'ISTERIKA x САМОУБИЙЦА V.2',          'price': 450},
+    2: {'name': 'ISTERIKA CLASSIC SALT',               'price': 400},
+    3: {'name': 'MONSTER HARDCORE',                    'price': 400},
+    4: {'name': 'MONSTER SOURLINE',                    'price': 400},
+    5: {'name': 'УБИВАШКА',                            'price': 400},
+    6: {'name': 'Vaporesso Xros 6 Mini',               'price': 1900},
+    7: {'name': 'Lost Vape Thelema Elite S',           'price': 1700},
+    8: {'name': 'Картридж Lost Vape E-plus Dual Mesh', 'price': 350},
+    9: {'name': 'Испаритель K-5 (70-90W)',             'price': 280},
 }
 
 # ── Промокоды по умолчанию (синхронизируй с app.js) ──────────

@@ -728,6 +728,19 @@ body::before {
   color: var(--text);
 }
 
+.card-strength {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  border-radius: 6px;
+  padding: 2px 7px;
+  margin: 3px 0 4px;
+  letter-spacing: 0.04em;
+}
+
 .card-sub {
   font-size: 11px;
   color: var(--text-dim);
