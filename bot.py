@@ -140,6 +140,8 @@ ORDER_COOLDOWNS_FILE = _BASE / "order_cooldowns.json"
 AVAILABILITY_FILE    = _BASE / "webapp" / "availability.json"
 CUSTOMER_CHATS_FILE  = _BASE / "customer_chats.json"
 SUPPORT_USERS_FILE   = _BASE / "support_users.json"
+PRODUCTS_FILE        = _BASE / "webapp" / "products.json"
+GITHUB_PRODUCTS_PATH = "webapp/products.json"
 
 
 def load_promo_usage() -> None:
@@ -195,6 +197,57 @@ def save_order_cooldowns() -> None:
         )
     except Exception as e:
         logger.warning("save order_cooldowns: %s", e)
+
+def load_products() -> None:
+    """Загружает products.json и обновляет PRODUCTS_CATALOG."""
+    if PRODUCTS_FILE.exists():
+        try:
+            data = json.loads(PRODUCTS_FILE.read_text(encoding="utf-8"))
+            for p in data:
+                pid = int(p["id"])
+                PRODUCTS_CATALOG[pid] = {
+                    "name":  str(p["name"]),
+                    "price": int(p["price"]),
+                }
+            logger.info("products.json загружен: %d товаров", len(data))
+        except Exception as e:
+            logger.warning("products.json: %s", e)
+
+def save_products_local(data: list) -> None:
+    try:
+        PRODUCTS_FILE.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception as e:
+        logger.warning("save products: %s", e)
+
+def push_products_github(data: list) -> bool:
+    if not GITHUB_TOKEN:
+        return False
+    try:
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PRODUCTS_PATH}"
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
+        }
+        req = urllib.request.Request(api_url, headers=headers)
+        with urllib.request.urlopen(req) as resp:
+            sha = json.loads(resp.read()).get("sha", "")
+        content_b64 = base64.b64encode(
+            json.dumps(data, ensure_ascii=False, indent=2).encode()
+        ).decode()
+        payload = json.dumps({
+            "message": "Update products via bot",
+            "content": content_b64,
+            "sha": sha,
+        }).encode()
+        req = urllib.request.Request(api_url, data=payload, headers=headers, method="PUT")
+        with urllib.request.urlopen(req) as resp:
+            return resp.status in (200, 201)
+    except Exception as e:
+        logger.warning("GitHub products API error: %s", e)
+        return False
 
 def load_customer_chats() -> None:
     if CUSTOMER_CHATS_FILE.exists():
@@ -499,6 +552,35 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         data_peek = json.loads(raw)
     except json.JSONDecodeError:
         await update.message.reply_text("❌ Ошибка данных.")
+        return
+
+    # ── Обновление каталога товаров (только администраторы) ─
+    if isinstance(data_peek, dict) and data_peek.get("type") == "products":
+        if not is_admin(update):
+            return
+        products_data = data_peek.get("data", [])
+        if not isinstance(products_data, list) or not products_data:
+            await update.message.reply_text("❌ Некорректные данные товаров.")
+            return
+        # Обновляем цены и названия в памяти
+        for p in products_data:
+            try:
+                pid   = int(p["id"])
+                name  = str(p["name"])[:80]
+                price = int(p["price"])
+                if pid in PRODUCTS_CATALOG and price > 0:
+                    PRODUCTS_CATALOG[pid]["name"]  = name
+                    PRODUCTS_CATALOG[pid]["price"] = price
+            except Exception:
+                continue
+        save_products_local(products_data)
+        ok_github = push_products_github(products_data)
+        status = "✅ GitHub обновлён" if ok_github else "⚠️ GitHub не обновлён"
+        await update.message.reply_text(
+            f"📝 <b>Каталог обновлён!</b>\n\n"
+            f"Товаров: <b>{len(products_data)}</b>\n{status}",
+            parse_mode="HTML",
+        )
         return
 
     # ── Обновление наличия (только менеджеры/админ) ──────────
@@ -1090,6 +1172,7 @@ def main() -> None:
     load_promo_usage()
     load_promo_user_usage()
     load_order_cooldowns()
+    load_products()
     load_customer_chats()
     load_support_users()
 

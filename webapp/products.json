@@ -1,0 +1,82 @@
+[
+  {
+    "id": 1,
+    "name": "ISTERIKA x САМОУБИЙЦА V.2",
+    "price": 450,
+    "badge": "Хит",
+    "strength": "80 мг",
+    "variants": ["Адреналин раш с лесными ягодами", "Вишня энергетик", "Кислый Скиттлс", "Малиновый энергетик"]
+  },
+  {
+    "id": 2,
+    "name": "ISTERIKA CLASSIC SALT",
+    "price": 400,
+    "badge": null,
+    "strength": "60 мг",
+    "variants": ["Зелёный Бёрн", "Кола чупа чупс"]
+  },
+  {
+    "id": 3,
+    "name": "MONSTER HARDCORE",
+    "price": 400,
+    "badge": null,
+    "strength": "60 мг",
+    "variants": ["Земляничный Коктейл", "Клубничный Коктейл", "Малиновый Коктейль", "Скитлс Коктейль"]
+  },
+  {
+    "id": 4,
+    "name": "MONSTER SOURLINE",
+    "price": 400,
+    "badge": null,
+    "strength": "60 мг",
+    "variants": ["Вишнёвый Энергетик", "Киви и Лайм", "Кислотный Скитлс", "Клубника и Лимон", "Малина и Личи", "Мармеладная Шипучка"]
+  },
+  {
+    "id": 5,
+    "name": "УБИВАШКА",
+    "price": 400,
+    "badge": null,
+    "strength": "80 мг",
+    "variants": ["Виноградная Фанта", "Вишнёвый Лимонад", "Кислая Вишня Ред Булл Смородина", "Кислый Земляничный Чупа Чупс", "Ред Булл", "Энергетик Классический", "Ягодный Взрыв"]
+  },
+  {
+    "id": 6,
+    "name": "Vaporesso Xros 6 Mini",
+    "price": 1900,
+    "badge": "Новинка",
+    "strength": null,
+    "variants": ["Plume Pink"]
+  },
+  {
+    "id": 7,
+    "name": "Lost Vape Thelema Elite S",
+    "price": 1700,
+    "badge": null,
+    "strength": null,
+    "variants": ["Twill Silver"]
+  },
+  {
+    "id": 8,
+    "name": "Картридж Lost Vape E-plus Dual Mesh",
+    "price": 350,
+    "badge": null,
+    "strength": null,
+    "variants": ["0.6 Ом"]
+  },
+  {
+    "id": 9,
+    "name": "Испаритель K-5 (70-90W)",
+    "price": 280,
+    "badge": null,
+    "strength": null,
+    "variants": ["0.15 Ом"]
+  },
+  {
+    "id": 10,
+    "name": "Картридж Vaporesso XROS",
+    "price": 300,
+    "badge": null,
+    "strength": null,
+    "variants": ["2 мл", "3 мл"]
+  }
+]

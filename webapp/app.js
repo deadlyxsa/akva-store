@@ -3,116 +3,34 @@
 ================================================================ */
 
 // ──────────────────────────────────────────────────────────────
-//  ДАННЫЕ ТОВАРОВ
+//  ДИЗАЙН ТОВАРОВ (неизменяемые визуальные параметры)
+//  Редактируемые данные (название, цена, вкусы) — в products.json
 // ──────────────────────────────────────────────────────────────
-const PRODUCTS = [
+const PRODUCT_DESIGN = {
+  1:  { category: 'liquids',      variantLabel: 'Вкус',    emoji: '💀', gradient: ['#1a0030', '#7c3aed'], image: 'images/isterika x самоубийца v.2.jpg' },
+  2:  { category: 'liquids',      variantLabel: 'Вкус',    emoji: '🧪', gradient: ['#064e3b', '#34d399'], image: 'images/Isterika Classic Salt.jpg' },
+  3:  { category: 'liquids',      variantLabel: 'Вкус',    emoji: '👾', gradient: ['#14532d', '#4ade80'], image: 'images/Monster Hardcore.jpg' },
+  4:  { category: 'liquids',      variantLabel: 'Вкус',    emoji: '🍋', gradient: ['#14532d', '#86efac'], image: 'images/Monster Sourline.jpg' },
+  5:  { category: 'liquids',      variantLabel: 'Вкус',    emoji: '💣', gradient: ['#450a0a', '#f87171'], image: 'images/убивашка.pnb.PNG' },
+  6:  { category: 'pods',         variantLabel: 'Цвет',    emoji: '🌸', gradient: ['#831843', '#fb7185'], image: 'images/Vaporesso Xros 6 mini.jpg' },
+  7:  { category: 'pods',         variantLabel: 'Цвет',    emoji: '⚡', gradient: ['#1e293b', '#94a3b8'], image: 'images/Thelema Elite S.jpg' },
+  8:  { category: 'accessories',  variantLabel: 'Вариант', emoji: '🫙', gradient: ['#1e3a5f', '#38bdf8'], image: 'images/Losv Vape E-Plus.jpg' },
+  9:  { category: 'accessories',  variantLabel: 'Вариант', emoji: '🔩', gradient: ['#422006', '#f97316'], image: 'images/Испаритель к5.jpg' },
+  10: { category: 'accessories',  variantLabel: 'Объём',   emoji: '🫙', gradient: ['#0369a1', '#0ea5e9'], image: 'images/картридж хрос.png' },
+};
 
-  // ── Жидкости ─────────────────────────────────────────────────
-  {
-    id: 1, category: 'liquids',
-    name: 'ISTERIKA x САМОУБИЙЦА V.2',
-    variantLabel: 'Вкус',
-    variants: ['Адреналин раш с лесными ягодами', 'Вишня энергетик', 'Кислый Скиттлс', 'Малиновый энергетик'],
-    price: 450, badge: 'Хит', emoji: '💀',
-    strength: '80 мг',
-    gradient: ['#1a0030', '#7c3aed'],
-    image: 'images/isterika x самоубийца v.2.jpg',
-  },
-  {
-    id: 2, category: 'liquids',
-    name: 'ISTERIKA CLASSIC SALT',
-    variantLabel: 'Вкус',
-    variants: ['Зелёный Бёрн', 'Кола чупа чупс'],
-    price: 400, badge: null, emoji: '🧪',
-    strength: '60 мг',
-    gradient: ['#064e3b', '#34d399'],
-    image: 'images/Isterika Classic Salt.jpg',
-  },
-  {
-    id: 3, category: 'liquids',
-    name: 'MONSTER HARDCORE',
-    variantLabel: 'Вкус',
-    variants: ['Земляничный Коктейл', 'Клубничный Коктейл', 'Малиновый Коктейль', 'Скитлс Коктейль'],
-    price: 400, badge: null, emoji: '👾',
-    strength: '60 мг',
-    gradient: ['#14532d', '#4ade80'],
-    image: 'images/Monster Hardcore.jpg',
-  },
-  {
-    id: 4, category: 'liquids',
-    name: 'MONSTER SOURLINE',
-    variantLabel: 'Вкус',
-    variants: ['Вишнёвый Энергетик', 'Киви и Лайм', 'Кислотный Скитлс', 'Клубника и Лимон', 'Малина и Личи', 'Мармеладная Шипучка'],
-    price: 400, badge: null, emoji: '🍋',
-    strength: '60 мг',
-    gradient: ['#14532d', '#86efac'],
-    image: 'images/Monster Sourline.jpg',
-  },
-  {
-    id: 5, category: 'liquids',
-    name: 'УБИВАШКА',
-    variantLabel: 'Вкус',
-    variants: ['Виноградная Фанта', 'Вишнёвый Лимонад', 'Кислая Вишня Ред Булл Смородина', 'Кислый Земляничный Чупа Чупс', 'Ред Булл', 'Энергетик Классический', 'Ягодный Взрыв'],
-    price: 400, badge: null, emoji: '💣',
-    strength: '80 мг',
-    gradient: ['#450a0a', '#f87171'],
-    image: 'images/убивашка.pnb.PNG',
-  },
+// Живой массив товаров — заполняется из products.json при загрузке
+let PRODUCTS = [];
 
-  // ── Под-системы ──────────────────────────────────────────────
-  {
-    id: 6, category: 'pods',
-    name: 'Vaporesso Xros 6 Mini',
-    variantLabel: 'Цвет',
-    variants: ['Plume Pink'],
-    price: 1900, badge: 'Новинка', emoji: '🌸',
-    strength: null,
-    gradient: ['#831843', '#fb7185'],
-    image: 'images/Vaporesso Xros 6 mini.jpg',
-  },
-  {
-    id: 7, category: 'pods',
-    name: 'Lost Vape Thelema Elite S',
-    variantLabel: 'Цвет',
-    variants: ['Twill Silver'],
-    price: 1700, badge: null, emoji: '⚡',
-    strength: null,
-    gradient: ['#1e293b', '#94a3b8'],
-    image: 'images/Thelema Elite S.jpg',
-  },
-
-  // ── Расходники ────────────────────────────────────────────────
-  {
-    id: 8, category: 'accessories',
-    name: 'Картридж Lost Vape E-plus Dual Mesh',
-    variantLabel: 'Вариант',
-    variants: ['0.6 Ом'],
-    price: 350, badge: null, emoji: '🫙',
-    strength: null,
-    gradient: ['#1e3a5f', '#38bdf8'],
-    image: 'images/Losv Vape E-Plus.jpg',
-  },
-  {
-    id: 9, category: 'accessories',
-    name: 'Испаритель K-5 (70-90W)',
-    variantLabel: 'Вариант',
-    variants: ['0.15 Ом'],
-    price: 280, badge: null, emoji: '🔩',
-    strength: null,
-    gradient: ['#422006', '#f97316'],
-    image: 'images/Испаритель к5.jpg',
-  },
-  {
-    id: 10, category: 'accessories',
-    name: 'Картридж Vaporesso XROS',
-    variantLabel: 'Объём',
-    variants: ['2 мл', '3 мл'],
-    price: 300, badge: null, emoji: '🫙',
-    strength: null,
-    gradient: ['#0369a1', '#0ea5e9'],
-    image: 'images/картридж хрос.png',
-  },
-];
+async function loadProducts() {
+  try {
+    const r = await fetch('products.json?t=' + Date.now());
+    if (r.ok) {
+      const data = await r.json();
+      PRODUCTS = data.map(p => ({ ...PRODUCT_DESIGN[p.id], ...p }));
+    }
+  } catch (_) {}
+}
 
 // ──────────────────────────────────────────────────────────────
 //  ПРОМОКОДЫ (синхронизируй с PROMO_CODES_DEFAULT в bot.py)
@@ -151,7 +69,9 @@ let availability = {};
 let availDraft = {};
 
 // ID менеджеров/админа — синхронизируй с bot.py
-const MANAGER_IDS_CLIENT = [878878846, 7555460392];
+const MANAGER_IDS_CLIENT = [878878846, 1947509265, 7555460392, 7883720545];
+// Только владельцы видят редактор товаров
+const ADMIN_IDS_CLIENT   = [878878846, 1947509265];
 
 async function loadAvailability() {
   try {
@@ -180,6 +100,11 @@ function tgInit() {
   const uid = tg.initDataUnsafe?.user?.id;
   if (uid && MANAGER_IDS_CLIENT.includes(uid)) {
     const btn = document.getElementById('adminBtn');
+    if (btn) btn.style.display = 'flex';
+  }
+  // Кнопка редактора товаров — только для владельцев (adminOnly)
+  if (uid && ADMIN_IDS_CLIENT.includes(uid)) {
+    const btn = document.getElementById('editProductsBtn');
     if (btn) btn.style.display = 'flex';
   }
 }
@@ -728,7 +653,7 @@ function plural(n) {
 // ──────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   tgInit();
-  await loadAvailability();
+  await Promise.all([loadProducts(), loadAvailability()]);
   renderCategories();
   renderProducts();
 
@@ -777,6 +702,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('availOverlay')?.addEventListener('click', closeAvailModal);
   document.getElementById('availModalClose')?.addEventListener('click', closeAvailModal);
   document.getElementById('availSaveBtn')?.addEventListener('click', saveAvailability);
+
+  // Редактор товаров
+  document.getElementById('editProductsBtn')?.addEventListener('click', openProductsEditor);
+  document.getElementById('prodEditorClose')?.addEventListener('click', closeProductsEditor);
+  document.getElementById('prodEditorOverlay')?.addEventListener('click', closeProductsEditor);
 
   // Лайтбокс — просмотр фото по клику на карточку
   const lightbox      = document.getElementById('lightbox');
@@ -863,4 +793,169 @@ async function saveAvailability() {
   closeAvailModal();
   renderProducts();
   showToast('✅ Наличие обновлено');
+}
+
+// ──────────────────────────────────────────────────────────────
+//  РЕДАКТОР ТОВАРОВ (только для администраторов)
+// ──────────────────────────────────────────────────────────────
+
+let editingProductId = null; // null = список, число = редактирование товара
+
+function openProductsEditor() {
+  editingProductId = null;
+  renderProductsList();
+  document.getElementById('prodEditorOverlay').classList.add('visible');
+  document.getElementById('prodEditorModal').classList.add('visible');
+}
+
+function closeProductsEditor() {
+  document.getElementById('prodEditorOverlay').classList.remove('visible');
+  document.getElementById('prodEditorModal').classList.remove('visible');
+  editingProductId = null;
+}
+
+function renderProductsList() {
+  const modal = document.getElementById('prodEditorModal');
+  modal.innerHTML = `
+    <div class="avail-modal-handle"></div>
+    <div class="avail-modal-header">
+      <h2 class="avail-modal-title">📝 Товары</h2>
+      <button class="cart-modal-close" id="prodEditorClose">✕</button>
+    </div>
+    <div class="prod-list">
+      ${PRODUCTS.map(p => `
+        <div class="prod-list-item" data-id="${p.id}">
+          <div class="prod-list-info">
+            <div class="prod-list-name">${p.name}</div>
+            <div class="prod-list-meta">${p.price} ₽${p.strength ? ' · ' + p.strength : ''} · ${p.variants.length} вар.</div>
+          </div>
+          <button class="prod-edit-btn" data-id="${p.id}">✏️ Изменить</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  modal.querySelector('#prodEditorClose')?.addEventListener('click', closeProductsEditor);
+  modal.querySelectorAll('.prod-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => openProductEdit(+btn.dataset.id));
+  });
+}
+
+function openProductEdit(productId) {
+  editingProductId = productId;
+  const p = PRODUCTS.find(x => x.id === productId);
+  if (!p) return;
+
+  const modal = document.getElementById('prodEditorModal');
+  modal.innerHTML = `
+    <div class="avail-modal-handle"></div>
+    <div class="avail-modal-header">
+      <button class="prod-back-btn" id="prodBackBtn">← Назад</button>
+      <h2 class="avail-modal-title" style="font-size:13px">${p.name}</h2>
+      <button class="cart-modal-close" id="prodEditorClose2">✕</button>
+    </div>
+    <div class="prod-edit-body">
+
+      <label class="prod-field-label">Название</label>
+      <input class="prod-field-input" id="peditName" value="${escHtml(p.name)}" maxlength="80" />
+
+      <div class="prod-field-row">
+        <div class="prod-field-half">
+          <label class="prod-field-label">Цена (₽)</label>
+          <input class="prod-field-input" id="peditPrice" type="number" value="${p.price}" min="1" max="99999" />
+        </div>
+        <div class="prod-field-half">
+          <label class="prod-field-label">Крепость</label>
+          <input class="prod-field-input" id="peditStrength" value="${p.strength || ''}" placeholder="напр. 50 мг" maxlength="20" />
+        </div>
+      </div>
+
+      <label class="prod-field-label">Значок на карточке</label>
+      <select class="prod-field-select" id="peditBadge">
+        <option value="">— нет —</option>
+        <option value="Хит"    ${p.badge === 'Хит'     ? 'selected' : ''}>🔥 Хит</option>
+        <option value="Новинка"${p.badge === 'Новинка' ? 'selected' : ''}>✨ Новинка</option>
+        <option value="Скидка" ${p.badge === 'Скидка'  ? 'selected' : ''}>💸 Скидка</option>
+      </select>
+
+      <label class="prod-field-label">Вкусы / варианты</label>
+      <div class="prod-variants-list" id="peditVariants">
+        ${p.variants.map((v, i) => `
+          <div class="prod-variant-row" data-index="${i}">
+            <input class="prod-field-input prod-variant-input" value="${escHtml(v)}" maxlength="80" />
+            <button class="prod-variant-del" data-index="${i}" title="Удалить">✕</button>
+          </div>
+        `).join('')}
+      </div>
+      <button class="prod-add-variant-btn" id="peditAddVariant">+ Добавить вкус</button>
+
+    </div>
+    <div class="avail-footer">
+      <button class="avail-save-btn" id="peditSave">💾 Сохранить</button>
+    </div>
+  `;
+
+  modal.querySelector('#prodBackBtn')?.addEventListener('click', renderProductsList);
+  modal.querySelector('#prodEditorClose2')?.addEventListener('click', closeProductsEditor);
+  modal.querySelector('#peditAddVariant')?.addEventListener('click', () => addVariantField());
+  modal.querySelector('#peditSave')?.addEventListener('click', () => saveProductEdit(productId));
+
+  modal.querySelectorAll('.prod-variant-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.closest('.prod-variant-row').remove();
+    });
+  });
+}
+
+function addVariantField(value = '') {
+  const list = document.getElementById('peditVariants');
+  const row = document.createElement('div');
+  row.className = 'prod-variant-row';
+  row.innerHTML = `
+    <input class="prod-field-input prod-variant-input" value="${escHtml(value)}" maxlength="80" placeholder="Название вкуса" />
+    <button class="prod-variant-del" title="Удалить">✕</button>
+  `;
+  row.querySelector('.prod-variant-del').addEventListener('click', () => row.remove());
+  list.appendChild(row);
+  row.querySelector('input').focus();
+}
+
+function saveProductEdit(productId) {
+  const name     = document.getElementById('peditName')?.value.trim();
+  const price    = parseInt(document.getElementById('peditPrice')?.value, 10);
+  const strength = document.getElementById('peditStrength')?.value.trim() || null;
+  const badge    = document.getElementById('peditBadge')?.value || null;
+  const variants = [...document.querySelectorAll('.prod-variant-input')]
+    .map(i => i.value.trim()).filter(Boolean);
+
+  if (!name)            return showToast('⚠️ Введите название товара');
+  if (!price || price < 1) return showToast('⚠️ Введите корректную цену');
+  if (!variants.length) return showToast('⚠️ Добавьте хотя бы один вкус');
+
+  // Обновляем в памяти
+  const idx = PRODUCTS.findIndex(p => p.id === productId);
+  if (idx === -1) return;
+  PRODUCTS[idx] = { ...PRODUCTS[idx], name, price, strength, badge, variants };
+
+  // Обновляем наличие под новые варианты (добавляем новые как true)
+  variants.forEach(v => {
+    const key = `${productId}:${v}`;
+    if (!(key in availability)) availability[key] = true;
+  });
+
+  // Отправляем боту (бот сохранит и обновит prices)
+  const exportData = PRODUCTS.map(({ id, name, price, badge, strength, variants }) =>
+    ({ id, name, price, badge, strength, variants })
+  );
+
+  if (tg?.sendData) {
+    tg.sendData(JSON.stringify({ type: 'products', data: exportData }));
+  }
+
+  renderProductsList();
+  renderProducts();
+  showToast('✅ Товар обновлён');
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }

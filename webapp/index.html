@@ -9,7 +9,7 @@
   <title>Akva Store</title>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="style.css?v=16" />
+  <link rel="stylesheet" href="style.css?v=17" />
 </head>
 <body>
 
@@ -27,6 +27,7 @@
       </div>
     </div>
     <div class="header-right">
+      <button class="admin-btn" id="editProductsBtn" aria-label="Редактировать товары" style="display:none">📝</button>
       <button class="admin-btn" id="adminBtn" aria-label="Управление наличием" style="display:none">⚙️</button>
       <button class="cart-btn" id="cartButton" aria-label="Корзина">
         🛒
@@ -152,12 +153,16 @@
 <!-- TOAST -->
 <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
+<!-- РЕДАКТОР ТОВАРОВ -->
+<div class="avail-overlay" id="prodEditorOverlay"></div>
+<div class="avail-modal" id="prodEditorModal" role="dialog" aria-label="Редактор товаров"></div>
+
 <!-- LIGHTBOX -->
 <div class="lightbox" id="lightbox" role="dialog" aria-label="Просмотр фото">
   <button class="lightbox-close" id="lightboxClose" aria-label="Закрыть">✕</button>
   <img class="lightbox-img" id="lightboxImg" alt="" />
 </div>
 
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

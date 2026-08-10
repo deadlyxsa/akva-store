@@ -1,5 +1,6 @@
 .env
 *.json
 !webapp/availability.json
+!webapp/products.json
 __pycache__/
 *.pyc
