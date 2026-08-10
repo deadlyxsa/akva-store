@@ -108,6 +108,12 @@ logger = logging.getLogger(__name__)
 
 support_users: set[int] = set()
 
+# Полный список товаров (синхронизируется с products.json)
+PRODUCTS_DATA: list = []
+
+# Очередь смены фото: {admin_id: [{'id': 5, 'name': 'УБИВАШКА'}, ...]}
+pending_image_uploads: dict[int, list] = {}
+
 # {user_id: {name, username, unread, last_msg, last_time}}
 customer_chats: dict[int, dict] = {}
 
@@ -199,10 +205,13 @@ def save_order_cooldowns() -> None:
         logger.warning("save order_cooldowns: %s", e)
 
 def load_products() -> None:
-    """Загружает products.json и обновляет PRODUCTS_CATALOG."""
+    """Загружает products.json и обновляет PRODUCTS_CATALOG и PRODUCTS_DATA."""
+    global PRODUCTS_DATA
     if PRODUCTS_FILE.exists():
         try:
             data = json.loads(PRODUCTS_FILE.read_text(encoding="utf-8"))
+            PRODUCTS_DATA = data
+            PRODUCTS_CATALOG.clear()
             for p in data:
                 pid = int(p["id"])
                 PRODUCTS_CATALOG[pid] = {
@@ -248,6 +257,41 @@ def push_products_github(data: list) -> bool:
     except Exception as e:
         logger.warning("GitHub products API error: %s", e)
         return False
+
+def push_image_github(img_bytes: bytes, path: str) -> bool:
+    """Загружает изображение в репозиторий через GitHub API."""
+    if not GITHUB_TOKEN:
+        return False
+    try:
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
+        }
+        sha = ""
+        try:
+            req = urllib.request.Request(api_url, headers=headers)
+            with urllib.request.urlopen(req) as resp:
+                sha = json.loads(resp.read()).get("sha", "")
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                raise
+        payload_dict: dict = {
+            "message": f"Update product image via bot ({path})",
+            "content": base64.b64encode(img_bytes).decode(),
+        }
+        if sha:
+            payload_dict["sha"] = sha
+        req = urllib.request.Request(
+            api_url, data=json.dumps(payload_dict).encode(), headers=headers, method="PUT"
+        )
+        with urllib.request.urlopen(req) as resp:
+            return resp.status in (200, 201)
+    except Exception as e:
+        logger.warning("GitHub image API error: %s", e)
+        return False
+
 
 def load_customer_chats() -> None:
     if CUSTOMER_CHATS_FILE.exists():
@@ -562,20 +606,46 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not isinstance(products_data, list) or not products_data:
             await update.message.reply_text("❌ Некорректные данные товаров.")
             return
-        # Обновляем цены и названия в памяти
+        # Перестраиваем каталог и полный список
+        global PRODUCTS_DATA
+        PRODUCTS_DATA = products_data
+        PRODUCTS_CATALOG.clear()
         for p in products_data:
             try:
                 pid   = int(p["id"])
-                name  = str(p["name"])[:80]
                 price = int(p["price"])
-                if pid in PRODUCTS_CATALOG and price > 0:
-                    PRODUCTS_CATALOG[pid]["name"]  = name
-                    PRODUCTS_CATALOG[pid]["price"] = price
+                if price > 0:
+                    PRODUCTS_CATALOG[pid] = {
+                        "name":  str(p["name"])[:80],
+                        "price": price,
+                    }
             except Exception:
                 continue
         save_products_local(products_data)
         ok_github = push_products_github(products_data)
         status = "✅ GitHub обновлён" if ok_github else "⚠️ GitHub не обновлён"
+        # Обрабатываем запросы на смену фото
+        image_updates = data_peek.get("imageUpdates", [])
+        if image_updates and isinstance(image_updates, list):
+            queue = []
+            for pid in image_updates:
+                try:
+                    pid = int(pid)
+                    pname = PRODUCTS_CATALOG.get(pid, {}).get("name", f"Товар #{pid}")
+                    queue.append({"id": pid, "name": pname})
+                except Exception:
+                    continue
+            if queue:
+                pending_image_uploads[user.id] = queue
+                first = queue[0]
+                await update.message.reply_text(
+                    f"📝 <b>Каталог обновлён!</b>\n\n"
+                    f"Товаров: <b>{len(products_data)}</b>\n{status}\n\n"
+                    f"📸 Теперь отправьте фото для товара:\n"
+                    f"<b>«{html.escape(first['name'])}»</b>",
+                    parse_mode="HTML",
+                )
+                return
         await update.message.reply_text(
             f"📝 <b>Каталог обновлён!</b>\n\n"
             f"Товаров: <b>{len(products_data)}</b>\n{status}",
@@ -989,6 +1059,67 @@ async def handle_manager_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text(f"❌ Не удалось доставить: {e}")
 
 
+async def handle_admin_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Фото от администратора → загружаем в репозиторий как изображение товара."""
+    uid = update.effective_user.id
+    if uid not in ADMIN_IDS:
+        return
+
+    queue = pending_image_uploads.get(uid)
+    if not queue:
+        return  # не ждали фото
+
+    item = queue[0]
+    product_id   = item["id"]
+    product_name = item["name"]
+
+    # Берём наиболее качественное фото
+    photo = update.message.photo[-1]
+    try:
+        file     = await ctx.bot.get_file(photo.file_id)
+        img_bytes = await file.download_as_bytearray()
+    except Exception as e:
+        logger.warning("download photo error: %s", e)
+        await update.message.reply_text("❌ Не удалось скачать фото. Попробуйте ещё раз.")
+        return
+
+    img_path   = f"product_{product_id}.jpg"
+    github_path = f"webapp/images/{img_path}"
+
+    ok = push_image_github(bytes(img_bytes), github_path)
+    if not ok:
+        await update.message.reply_text("❌ Не удалось загрузить фото в GitHub. Проверьте токен.")
+        return
+
+    # Обновляем products.json с новым путём к фото
+    global PRODUCTS_DATA
+    for p in PRODUCTS_DATA:
+        if int(p.get("id", 0)) == product_id:
+            p["image"] = f"images/{img_path}"
+            break
+    save_products_local(PRODUCTS_DATA)
+    push_products_github(PRODUCTS_DATA)
+
+    # Удаляем обработанный элемент из очереди
+    queue.pop(0)
+    if not queue:
+        del pending_image_uploads[uid]
+
+    await update.message.reply_text(
+        f"✅ Фото товара <b>{html.escape(product_name)}</b> обновлено!\n"
+        f"Появится на сайте через ~1 минуту 🌊",
+        parse_mode="HTML",
+    )
+
+    if queue:
+        next_item = queue[0]
+        await update.message.reply_text(
+            f"📸 Отправьте фото для следующего товара:\n"
+            f"<b>«{html.escape(next_item['name'])}»</b>",
+            parse_mode="HTML",
+        )
+
+
 async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     """Инлайн-кнопки панели — только для менеджеров."""
     query      = update.callback_query
@@ -1189,6 +1320,10 @@ def main() -> None:
     ))
     app.add_handler(MessageHandler(
         filters.StatusUpdate.WEB_APP_DATA, handle_order
+    ))
+    app.add_handler(MessageHandler(
+        filters.Chat(list(ADMIN_IDS)) & filters.PHOTO,
+        handle_admin_photo,
     ))
     app.add_handler(CallbackQueryHandler(handle_callback))
 

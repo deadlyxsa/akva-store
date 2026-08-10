@@ -19,6 +19,15 @@ const PRODUCT_DESIGN = {
   10: { category: 'accessories',  variantLabel: 'Объём',   emoji: '🫙', gradient: ['#0369a1', '#0ea5e9'], image: 'images/картридж хрос.png' },
 };
 
+// Дефолтный дизайн для новых товаров по категории
+const CATEGORY_DEFAULTS = {
+  liquids:      { gradient: ['#1a0030', '#7c3aed'], emoji: '💧' },
+  pods:         { gradient: ['#1e293b', '#94a3b8'], emoji: '🔋' },
+  disposables:  { gradient: ['#0f3460', '#533483'], emoji: '💨' },
+  snus:         { gradient: ['#1b4332', '#52b788'], emoji: '🌿' },
+  accessories:  { gradient: ['#1e3a5f', '#38bdf8'], emoji: '🔧' },
+};
+
 // Живой массив товаров — заполняется из products.json при загрузке
 let PRODUCTS = [];
 
@@ -27,7 +36,10 @@ async function loadProducts() {
     const r = await fetch('products.json?t=' + Date.now());
     if (r.ok) {
       const data = await r.json();
-      PRODUCTS = data.map(p => ({ ...PRODUCT_DESIGN[p.id], ...p }));
+      PRODUCTS = data.map(p => {
+        const design = PRODUCT_DESIGN[p.id] || CATEGORY_DEFAULTS[p.category] || CATEGORY_DEFAULTS.accessories;
+        return { ...design, ...p };
+      });
     }
   } catch (_) {}
 }
@@ -283,6 +295,7 @@ function buildCard(p) {
       <div class="card-body">
         <div class="card-name">${p.name}</div>
         ${p.strength ? `<div class="card-strength">${p.strength}</div>` : ''}
+        ${p.description ? `<div class="card-desc">${escHtml(p.description)}</div>` : ''}
         <div class="card-price-row">${priceHtml}</div>
         <div class="card-chips-row" id="chips-${p.id}">${chipsHtml}</div>
       </div>
@@ -796,13 +809,23 @@ async function saveAvailability() {
 }
 
 // ──────────────────────────────────────────────────────────────
-//  РЕДАКТОР ТОВАРОВ (только для администраторов)
+//  ПАНЕЛЬ АДМИНИСТРАТОРА (только для ADMIN_IDS_CLIENT)
 // ──────────────────────────────────────────────────────────────
 
-let editingProductId = null; // null = список, число = редактирование товара
+let editingProductId = null; // null = добавление нового
+let editingIsNew     = false;
+let pendingImageUpdate = false;
+
+function isAdminUser() {
+  const uid = tg?.initDataUnsafe?.user?.id;
+  return uid && ADMIN_IDS_CLIENT.includes(uid);
+}
 
 function openProductsEditor() {
+  if (!isAdminUser() && tg) { showToast('⛔ Доступ запрещён'); return; }
   editingProductId = null;
+  editingIsNew     = false;
+  pendingImageUpdate = false;
   renderProductsList();
   document.getElementById('prodEditorOverlay').classList.add('visible');
   document.getElementById('prodEditorModal').classList.add('visible');
@@ -811,82 +834,182 @@ function openProductsEditor() {
 function closeProductsEditor() {
   document.getElementById('prodEditorOverlay').classList.remove('visible');
   document.getElementById('prodEditorModal').classList.remove('visible');
-  editingProductId = null;
 }
+
+// ── Список товаров ─────────────────────────────────────────────
 
 function renderProductsList() {
   const modal = document.getElementById('prodEditorModal');
   modal.innerHTML = `
     <div class="avail-modal-handle"></div>
     <div class="avail-modal-header">
-      <h2 class="avail-modal-title">📝 Товары</h2>
+      <h2 class="avail-modal-title">🛠 Управление</h2>
       <button class="cart-modal-close" id="prodEditorClose">✕</button>
     </div>
-    <div class="prod-list">
-      ${PRODUCTS.map(p => `
-        <div class="prod-list-item" data-id="${p.id}">
-          <div class="prod-list-info">
-            <div class="prod-list-name">${p.name}</div>
-            <div class="prod-list-meta">${p.price} ₽${p.strength ? ' · ' + p.strength : ''} · ${p.variants.length} вар.</div>
-          </div>
-          <button class="prod-edit-btn" data-id="${p.id}">✏️ Изменить</button>
-        </div>
-      `).join('')}
+    <button class="prod-add-new-btn" id="prodAddNewBtn">＋ Добавить товар</button>
+    <div class="prod-list" id="prodList">
+      ${PRODUCTS.map(p => renderProductRow(p)).join('')}
     </div>
   `;
   modal.querySelector('#prodEditorClose')?.addEventListener('click', closeProductsEditor);
-  modal.querySelectorAll('.prod-edit-btn').forEach(btn => {
-    btn.addEventListener('click', () => openProductEdit(+btn.dataset.id));
-  });
+  modal.querySelector('#prodAddNewBtn')?.addEventListener('click', openAddProduct);
+  modal.querySelectorAll('.prod-edit-btn').forEach(btn =>
+    btn.addEventListener('click', () => openProductEdit(+btn.dataset.id))
+  );
+  modal.querySelectorAll('.prod-delete-btn').forEach(btn =>
+    btn.addEventListener('click', () => confirmDeleteProduct(+btn.dataset.id))
+  );
+}
+
+function renderProductRow(p) {
+  const imgHtml = p.image
+    ? `<img src="${p.image}" class="prod-list-thumb" alt="" />`
+    : `<div class="prod-list-thumb prod-list-thumb--emoji">${p.emoji || '📦'}</div>`;
+  const catLabel = CATEGORIES.find(c => c.id === p.category)?.label || (p.category || '');
+  return `
+    <div class="prod-list-item" id="prod-row-${p.id}">
+      ${imgHtml}
+      <div class="prod-list-info">
+        <div class="prod-list-name">${escHtml(p.name)}</div>
+        <div class="prod-list-meta">${p.price.toLocaleString('ru-RU')} ₽ · ${catLabel} · ${p.variants.length} вар.</div>
+      </div>
+      <div class="prod-list-actions">
+        <button class="prod-edit-btn" data-id="${p.id}" title="Изменить">✏️</button>
+        <button class="prod-delete-btn" data-id="${p.id}" title="Удалить">🗑</button>
+      </div>
+    </div>
+  `;
+}
+
+function confirmDeleteProduct(productId) {
+  const p = PRODUCTS.find(x => x.id === productId);
+  if (!p) return;
+  const row = document.getElementById(`prod-row-${productId}`);
+  if (!row) return;
+  row.innerHTML = `
+    <div class="prod-confirm-row">
+      <span class="prod-confirm-text">Удалить «${escHtml(p.name)}»?</span>
+      <button class="prod-confirm-yes" data-id="${productId}">✓ Да</button>
+      <button class="prod-confirm-no">✗ Нет</button>
+    </div>
+  `;
+  row.querySelector('.prod-confirm-yes').addEventListener('click', () => deleteProduct(productId));
+  row.querySelector('.prod-confirm-no').addEventListener('click', renderProductsList);
+}
+
+function deleteProduct(productId) {
+  if (!isAdminUser() && tg) return;
+  const idx = PRODUCTS.findIndex(p => p.id === productId);
+  if (idx === -1) return;
+  PRODUCTS.splice(idx, 1);
+  const exportData = buildExportData();
+  if (tg?.sendData) {
+    tg.sendData(JSON.stringify({ type: 'products', data: exportData }));
+  } else {
+    renderProductsList();
+    renderProducts();
+    showToast('✅ Товар удалён (тест)');
+  }
+}
+
+// ── Форма редактирования / добавления ─────────────────────────
+
+function openAddProduct() {
+  if (!isAdminUser() && tg) return;
+  editingProductId = null;
+  editingIsNew     = true;
+  pendingImageUpdate = false;
+  const newId  = Math.max(0, ...PRODUCTS.map(x => x.id)) + 1;
+  const newP   = {
+    id: newId, name: '', price: 0, badge: null, strength: null,
+    description: '', category: 'liquids', variantLabel: 'Вкус',
+    image: null, variants: [], emoji: '📦', gradient: ['#1a0030', '#7c3aed'],
+  };
+  renderEditForm(newP, true);
 }
 
 function openProductEdit(productId) {
+  if (!isAdminUser() && tg) return;
   editingProductId = productId;
+  editingIsNew     = false;
+  pendingImageUpdate = false;
   const p = PRODUCTS.find(x => x.id === productId);
   if (!p) return;
+  renderEditForm(p, false);
+}
 
+function renderEditForm(p, isNew) {
   const modal = document.getElementById('prodEditorModal');
+  const catOptions = CATEGORIES.map(c =>
+    `<option value="${c.id}"${p.category === c.id ? ' selected' : ''}>${c.label}</option>`
+  ).join('');
+  const imgPreview = p.image
+    ? `<img src="${p.image}" class="prod-img-preview" alt="" id="prodImgPreview" />`
+    : `<div class="prod-img-preview prod-img-placeholder" id="prodImgPreview">${p.emoji || '📦'}</div>`;
+
   modal.innerHTML = `
     <div class="avail-modal-handle"></div>
     <div class="avail-modal-header">
       <button class="prod-back-btn" id="prodBackBtn">← Назад</button>
-      <h2 class="avail-modal-title" style="font-size:13px">${p.name}</h2>
+      <h2 class="avail-modal-title" style="font-size:13px">${isNew ? 'Новый товар' : escHtml(p.name)}</h2>
       <button class="cart-modal-close" id="prodEditorClose2">✕</button>
     </div>
     <div class="prod-edit-body">
 
-      <label class="prod-field-label">Название</label>
-      <input class="prod-field-input" id="peditName" value="${escHtml(p.name)}" maxlength="80" />
+      <div class="prod-img-section">
+        <div class="prod-img-wrap">${imgPreview}</div>
+        <button class="prod-img-change-btn" id="prodImgChangeBtn">📷 Сменить фото</button>
+        <p class="prod-img-hint" id="prodImgHint" style="display:none">
+          После сохранения бот попросит прислать фото
+        </p>
+      </div>
+
+      <label class="prod-field-label">Название *</label>
+      <input class="prod-field-input" id="peditName" value="${escHtml(p.name)}" maxlength="80" placeholder="Название товара" />
 
       <div class="prod-field-row">
         <div class="prod-field-half">
-          <label class="prod-field-label">Цена (₽)</label>
-          <input class="prod-field-input" id="peditPrice" type="number" value="${p.price}" min="1" max="99999" />
+          <label class="prod-field-label">Цена (₽) *</label>
+          <input class="prod-field-input" id="peditPrice" type="number" value="${p.price || ''}" min="1" max="99999" placeholder="0" />
         </div>
         <div class="prod-field-half">
           <label class="prod-field-label">Крепость</label>
-          <input class="prod-field-input" id="peditStrength" value="${p.strength || ''}" placeholder="напр. 50 мг" maxlength="20" />
+          <input class="prod-field-input" id="peditStrength" value="${escHtml(p.strength || '')}" placeholder="напр. 50 мг" maxlength="20" />
         </div>
       </div>
 
-      <label class="prod-field-label">Значок на карточке</label>
-      <select class="prod-field-select" id="peditBadge">
-        <option value="">— нет —</option>
-        <option value="Хит"    ${p.badge === 'Хит'     ? 'selected' : ''}>🔥 Хит</option>
-        <option value="Новинка"${p.badge === 'Новинка' ? 'selected' : ''}>✨ Новинка</option>
-        <option value="Скидка" ${p.badge === 'Скидка'  ? 'selected' : ''}>💸 Скидка</option>
-      </select>
+      <label class="prod-field-label">Категория *</label>
+      <select class="prod-field-select" id="peditCategory">${catOptions}</select>
 
-      <label class="prod-field-label">Вкусы / варианты</label>
+      <div class="prod-field-row">
+        <div class="prod-field-half">
+          <label class="prod-field-label">Значок</label>
+          <select class="prod-field-select" id="peditBadge">
+            <option value="">— нет —</option>
+            <option value="Хит"     ${p.badge === 'Хит'     ? 'selected' : ''}>🔥 Хит</option>
+            <option value="Новинка" ${p.badge === 'Новинка' ? 'selected' : ''}>✨ Новинка</option>
+            <option value="Скидка"  ${p.badge === 'Скидка'  ? 'selected' : ''}>💸 Скидка</option>
+          </select>
+        </div>
+        <div class="prod-field-half">
+          <label class="prod-field-label">Тип варианта</label>
+          <input class="prod-field-input" id="peditVarLabel" value="${escHtml(p.variantLabel || 'Вкус')}" maxlength="20" placeholder="Вкус" />
+        </div>
+      </div>
+
+      <label class="prod-field-label">Описание</label>
+      <textarea class="prod-field-input prod-field-textarea" id="peditDesc" maxlength="300" placeholder="Краткое описание (необязательно)">${escHtml(p.description || '')}</textarea>
+
+      <label class="prod-field-label">Варианты *</label>
       <div class="prod-variants-list" id="peditVariants">
-        ${p.variants.map((v, i) => `
+        ${(p.variants || []).map((v, i) => `
           <div class="prod-variant-row" data-index="${i}">
             <input class="prod-field-input prod-variant-input" value="${escHtml(v)}" maxlength="80" />
-            <button class="prod-variant-del" data-index="${i}" title="Удалить">✕</button>
+            <button class="prod-variant-del" title="Удалить">✕</button>
           </div>
         `).join('')}
       </div>
-      <button class="prod-add-variant-btn" id="peditAddVariant">+ Добавить вкус</button>
+      <button class="prod-add-variant-btn" id="peditAddVariant">+ Добавить</button>
 
     </div>
     <div class="avail-footer">
@@ -897,21 +1020,29 @@ function openProductEdit(productId) {
   modal.querySelector('#prodBackBtn')?.addEventListener('click', renderProductsList);
   modal.querySelector('#prodEditorClose2')?.addEventListener('click', closeProductsEditor);
   modal.querySelector('#peditAddVariant')?.addEventListener('click', () => addVariantField());
-  modal.querySelector('#peditSave')?.addEventListener('click', () => saveProductEdit(productId));
+  modal.querySelector('#peditSave')?.addEventListener('click', () => saveProduct(p.id));
+
+  modal.querySelector('#prodImgChangeBtn')?.addEventListener('click', () => {
+    pendingImageUpdate = true;
+    const hint = document.getElementById('prodImgHint');
+    const btn  = document.getElementById('prodImgChangeBtn');
+    if (hint) hint.style.display = '';
+    if (btn)  { btn.textContent = '✅ Фото будет обновлено'; btn.disabled = true; }
+    tg?.HapticFeedback?.impactOccurred('light');
+  });
 
   modal.querySelectorAll('.prod-variant-del').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.closest('.prod-variant-row').remove();
-    });
+    btn.addEventListener('click', () => btn.closest('.prod-variant-row').remove());
   });
 }
 
 function addVariantField(value = '') {
   const list = document.getElementById('peditVariants');
+  if (!list) return;
   const row = document.createElement('div');
   row.className = 'prod-variant-row';
   row.innerHTML = `
-    <input class="prod-field-input prod-variant-input" value="${escHtml(value)}" maxlength="80" placeholder="Название вкуса" />
+    <input class="prod-field-input prod-variant-input" value="${escHtml(value)}" maxlength="80" placeholder="Название" />
     <button class="prod-variant-del" title="Удалить">✕</button>
   `;
   row.querySelector('.prod-variant-del').addEventListener('click', () => row.remove());
@@ -919,41 +1050,62 @@ function addVariantField(value = '') {
   row.querySelector('input').focus();
 }
 
-function saveProductEdit(productId) {
-  const name     = document.getElementById('peditName')?.value.trim();
-  const price    = parseInt(document.getElementById('peditPrice')?.value, 10);
-  const strength = document.getElementById('peditStrength')?.value.trim() || null;
-  const badge    = document.getElementById('peditBadge')?.value || null;
-  const variants = [...document.querySelectorAll('.prod-variant-input')]
+// ── Сохранение (создание / обновление) ────────────────────────
+
+function buildExportData() {
+  return PRODUCTS.map(p => ({
+    id:           p.id,
+    name:         p.name,
+    price:        p.price,
+    badge:        p.badge        || null,
+    strength:     p.strength     || null,
+    description:  p.description  || '',
+    category:     p.category     || 'liquids',
+    variantLabel: p.variantLabel || 'Вкус',
+    image:        p.image        || null,
+    variants:     p.variants,
+  }));
+}
+
+function saveProduct(productId) {
+  if (!isAdminUser() && tg) return;
+
+  const name         = document.getElementById('peditName')?.value.trim();
+  const price        = parseInt(document.getElementById('peditPrice')?.value, 10);
+  const strength     = document.getElementById('peditStrength')?.value.trim() || null;
+  const badge        = document.getElementById('peditBadge')?.value || null;
+  const category     = document.getElementById('peditCategory')?.value || 'liquids';
+  const variantLabel = document.getElementById('peditVarLabel')?.value.trim() || 'Вкус';
+  const description  = document.getElementById('peditDesc')?.value.trim() || '';
+  const variants     = [...document.querySelectorAll('.prod-variant-input')]
     .map(i => i.value.trim()).filter(Boolean);
 
-  if (!name)            return showToast('⚠️ Введите название товара');
+  if (!name)               return showToast('⚠️ Введите название товара');
   if (!price || price < 1) return showToast('⚠️ Введите корректную цену');
-  if (!variants.length) return showToast('⚠️ Добавьте хотя бы один вкус');
+  if (!variants.length)    return showToast('⚠️ Добавьте хотя бы один вариант');
 
-  // Обновляем в памяти
-  const idx = PRODUCTS.findIndex(p => p.id === productId);
-  if (idx === -1) return;
-  PRODUCTS[idx] = { ...PRODUCTS[idx], name, price, strength, badge, variants };
-
-  // Обновляем наличие под новые варианты (добавляем новые как true)
-  variants.forEach(v => {
-    const key = `${productId}:${v}`;
-    if (!(key in availability)) availability[key] = true;
-  });
-
-  // Отправляем боту (бот сохранит и обновит prices)
-  const exportData = PRODUCTS.map(({ id, name, price, badge, strength, variants }) =>
-    ({ id, name, price, badge, strength, variants })
-  );
-
-  if (tg?.sendData) {
-    tg.sendData(JSON.stringify({ type: 'products', data: exportData }));
+  if (editingIsNew) {
+    const design = CATEGORY_DEFAULTS[category] || CATEGORY_DEFAULTS.accessories;
+    PRODUCTS.push({ ...design, id: productId, name, price, badge, strength,
+                    description, category, variantLabel, image: null, variants });
+    variants.forEach(v => { if (!(`${productId}:${v}` in availability)) availability[`${productId}:${v}`] = true; });
+  } else {
+    const idx = PRODUCTS.findIndex(p => p.id === productId);
+    if (idx === -1) return;
+    PRODUCTS[idx] = { ...PRODUCTS[idx], name, price, badge, strength, description, category, variantLabel, variants };
+    variants.forEach(v => { if (!(`${productId}:${v}` in availability)) availability[`${productId}:${v}`] = true; });
   }
 
-  renderProductsList();
-  renderProducts();
-  showToast('✅ Товар обновлён');
+  const exportData    = buildExportData();
+  const imageUpdates  = (pendingImageUpdate && !editingIsNew) ? [productId] : [];
+
+  if (tg?.sendData) {
+    tg.sendData(JSON.stringify({ type: 'products', data: exportData, imageUpdates }));
+  } else {
+    renderProductsList();
+    renderProducts();
+    showToast(editingIsNew ? '✅ Товар добавлен (тест)' : '✅ Товар обновлён (тест)');
+  }
 }
 
 function escHtml(s) {

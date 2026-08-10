@@ -5,6 +5,10 @@
     "price": 450,
     "badge": "Хит",
     "strength": "80 мг",
+    "description": "",
+    "category": "liquids",
+    "variantLabel": "Вкус",
+    "image": "images/isterika x самоубийца v.2.jpg",
     "variants": ["Адреналин раш с лесными ягодами", "Вишня энергетик", "Кислый Скиттлс", "Малиновый энергетик"]
   },
   {
@@ -13,6 +17,10 @@
     "price": 400,
     "badge": null,
     "strength": "60 мг",
+    "description": "",
+    "category": "liquids",
+    "variantLabel": "Вкус",
+    "image": "images/Isterika Classic Salt.jpg",
     "variants": ["Зелёный Бёрн", "Кола чупа чупс"]
   },
   {
@@ -21,6 +29,10 @@
     "price": 400,
     "badge": null,
     "strength": "60 мг",
+    "description": "",
+    "category": "liquids",
+    "variantLabel": "Вкус",
+    "image": "images/Monster Hardcore.jpg",
     "variants": ["Земляничный Коктейл", "Клубничный Коктейл", "Малиновый Коктейль", "Скитлс Коктейль"]
   },
   {
@@ -29,6 +41,10 @@
     "price": 400,
     "badge": null,
     "strength": "60 мг",
+    "description": "",
+    "category": "liquids",
+    "variantLabel": "Вкус",
+    "image": "images/Monster Sourline.jpg",
     "variants": ["Вишнёвый Энергетик", "Киви и Лайм", "Кислотный Скитлс", "Клубника и Лимон", "Малина и Личи", "Мармеладная Шипучка"]
   },
   {
@@ -37,6 +53,10 @@
     "price": 400,
     "badge": null,
     "strength": "80 мг",
+    "description": "",
+    "category": "liquids",
+    "variantLabel": "Вкус",
+    "image": "images/убивашка.pnb.PNG",
     "variants": ["Виноградная Фанта", "Вишнёвый Лимонад", "Кислая Вишня Ред Булл Смородина", "Кислый Земляничный Чупа Чупс", "Ред Булл", "Энергетик Классический", "Ягодный Взрыв"]
   },
   {
@@ -45,6 +65,10 @@
     "price": 1900,
     "badge": "Новинка",
     "strength": null,
+    "description": "",
+    "category": "pods",
+    "variantLabel": "Цвет",
+    "image": "images/Vaporesso Xros 6 mini.jpg",
     "variants": ["Plume Pink"]
   },
   {
@@ -53,6 +77,10 @@
     "price": 1700,
     "badge": null,
     "strength": null,
+    "description": "",
+    "category": "pods",
+    "variantLabel": "Цвет",
+    "image": "images/Thelema Elite S.jpg",
     "variants": ["Twill Silver"]
   },
   {
@@ -61,6 +89,10 @@
     "price": 350,
     "badge": null,
     "strength": null,
+    "description": "",
+    "category": "accessories",
+    "variantLabel": "Вариант",
+    "image": "images/Losv Vape E-Plus.jpg",
     "variants": ["0.6 Ом"]
   },
   {
@@ -69,6 +101,10 @@
     "price": 280,
     "badge": null,
     "strength": null,
+    "description": "",
+    "category": "accessories",
+    "variantLabel": "Вариант",
+    "image": "images/Испаритель к5.jpg",
     "variants": ["0.15 Ом"]
   },
   {
@@ -77,6 +113,10 @@
     "price": 300,
     "badge": null,
     "strength": null,
+    "description": "",
+    "category": "accessories",
+    "variantLabel": "Объём",
+    "image": "images/картридж хрос.png",
     "variants": ["2 мл", "3 мл"]
   }
 ]
