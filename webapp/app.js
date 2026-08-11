@@ -515,7 +515,12 @@ function renderCartModal() {
     const p = PRODUCTS.find(x => x.id === id);
     return `linear-gradient(135deg,${p.gradient[0]},${p.gradient[1]})`;
   };
-  const getEmoji = id => PRODUCTS.find(x => x.id === id)?.emoji ?? '📦';
+  const getItemIcon = id => {
+    const p = PRODUCTS.find(x => x.id === id);
+    if (!p) return '📦';
+    if (p.image) return `<img src="${p.image}" class="ci-icon-img" alt="" loading="lazy" />`;
+    return p.emoji ?? '📦';
+  };
 
   const disc = activePromo?.discount || 0;
 
@@ -528,7 +533,7 @@ function renderCartModal() {
       : `<span class="ci-price">${origItemTotal.toLocaleString('ru-RU')} ₽</span>`;
     return `
     <div class="cart-item">
-      <div class="ci-icon" style="background:${getGradient(item.productId)}">${getEmoji(item.productId)}</div>
+      <div class="ci-icon" style="background:${getGradient(item.productId)}">${getItemIcon(item.productId)}</div>
       <div class="ci-info">
         <div class="ci-name">${item.name}</div>
         <div class="ci-sub">${item.variant}</div>
