@@ -726,21 +726,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('prodEditorClose')?.addEventListener('click', closeProductsEditor);
   document.getElementById('prodEditorOverlay')?.addEventListener('click', closeProductsEditor);
 
-  // Анимация цены доставки в баннере
-  const deliveryPrices = ['150 ₽', '200 ₽', '250 ₽', '300 ₽'];
-  const priceEl = document.getElementById('bannerPrice');
-  if (priceEl) {
-    let idx = 0;
-    setInterval(() => {
-      priceEl.classList.add('fade');
-      setTimeout(() => {
-        idx = (idx + 1) % deliveryPrices.length;
-        priceEl.textContent = deliveryPrices[idx];
-        priceEl.classList.remove('fade');
-      }, 260);
-    }, 2000);
-  }
-
   // Лайтбокс — просмотр фото по клику на карточку
   const lightbox      = document.getElementById('lightbox');
   const lightboxImg   = document.getElementById('lightboxImg');
