@@ -1,0 +1,8 @@
+[
+  {"id": "pods",        "label": "Под-системы", "img": "images/Под-системы.png"},
+  {"id": "liquids",     "label": "Жидкости",    "img": "images/Жидкость.png"},
+  {"id": "pouches",     "label": "Паучи",       "img": null, "icon": "🫙"},
+  {"id": "disposables", "label": "Одноразки",   "img": "images/Одноразки.png", "imgSize": 38},
+  {"id": "snus",        "label": "Снюс",        "img": "images/снюс.png"},
+  {"id": "accessories", "label": "Расходники",  "img": "images/Расходники.png"}
+]

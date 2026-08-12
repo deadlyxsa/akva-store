@@ -56,9 +56,9 @@ const PROMO_CODES = {
 };
 
 // ──────────────────────────────────────────────────────────────
-//  КАТЕГОРИИ
+//  КАТЕГОРИИ (загружаются из categories.json, фолбэк — встроенные)
 // ──────────────────────────────────────────────────────────────
-const CATEGORIES = [
+let CATEGORIES = [
   { id: 'pods',         img: 'images/Под-системы.png', label: 'Под-системы' },
   { id: 'liquids',      img: 'images/Жидкость.png',    label: 'Жидкости'    },
   { id: 'pouches',      img: null,                      label: 'Паучи',       icon: '🫙'  },
@@ -66,6 +66,16 @@ const CATEGORIES = [
   { id: 'snus',         img: 'images/снюс.png',        label: 'Снюс'        },
   { id: 'accessories',  img: 'images/Расходники.png',  label: 'Расходники'  },
 ];
+
+async function loadCategories() {
+  try {
+    const r = await fetch('categories.json?t=' + Date.now());
+    if (r.ok) {
+      const data = await r.json();
+      if (Array.isArray(data) && data.length) CATEGORIES = data;
+    }
+  } catch (_) {}
+}
 
 // ──────────────────────────────────────────────────────────────
 //  СОСТОЯНИЕ
@@ -136,11 +146,17 @@ function tgInit() {
   if (uid && MANAGER_IDS_CLIENT.includes(uid)) {
     const btn = document.getElementById('adminBtn');
     if (btn) btn.style.display = 'flex';
+    // Редактор товаров и категорий — для всех менеджеров и админов
+    const editBtn = document.getElementById('editProductsBtn');
+    if (editBtn) editBtn.style.display = 'flex';
+    // Скрываем FAB чата для менеджеров (им не нужна CTA-кнопка)
+    const fab = document.getElementById('chatFab');
+    if (fab) fab.style.display = 'none';
   }
-  // Кнопка редактора товаров — только для владельцев (adminOnly)
-  if (uid && ADMIN_IDS_CLIENT.includes(uid)) {
-    const btn = document.getElementById('editProductsBtn');
-    if (btn) btn.style.display = 'flex';
+  if (uid && !MANAGER_IDS_CLIENT.includes(uid)) {
+    // Показываем FAB чата только клиентам
+    const fab = document.getElementById('chatFab');
+    if (fab) fab.style.display = 'flex';
   }
 }
 
@@ -729,7 +745,7 @@ function plural(n) {
 // ──────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   tgInit();
-  await Promise.all([loadConfig(), loadProducts(), loadAvailability()]);
+  await Promise.all([loadConfig(), loadProducts(), loadAvailability(), loadCategories()]);
   renderCategories();
   renderProducts();
 
@@ -784,10 +800,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('prodEditorClose')?.addEventListener('click', closeProductsEditor);
   document.getElementById('prodEditorOverlay')?.addEventListener('click', closeProductsEditor);
 
-  // Чат
+  // Чат (заголовок + FAB)
   document.getElementById('chatBtn')?.addEventListener('click', () => openChat());
+  document.getElementById('chatFab')?.addEventListener('click', () => openChat());
   document.getElementById('chatOverlay')?.addEventListener('click', closeChat);
   document.getElementById('chatClose')?.addEventListener('click', closeChat);
+
+  // Авто-открытие чата по URL-параметру (?open=chat[&cid=ID])
+  const _urlP = new URLSearchParams(window.location.search);
+  if (_urlP.get('open') === 'chat') {
+    const _cid = _urlP.get('cid');
+    setTimeout(() => openChat(_cid ? parseInt(_cid) : null), 500);
+  }
 
   const chatInput = document.getElementById('chatInput');
   document.getElementById('chatSendBtn')?.addEventListener('click', sendChatMessage);
@@ -905,7 +929,7 @@ function isManagerUser() {
 }
 
 function openProductsEditor() {
-  if (!isAdminUser() && tg) { showToast('⛔ Доступ запрещён'); return; }
+  if (!isAdminUser() && !isManagerUser() && tg) { showToast('⛔ Доступ запрещён'); return; }
   editingProductId = null;
   editingIsNew     = false;
   pendingImageUpdate = false;
@@ -923,11 +947,16 @@ function closeProductsEditor() {
 
 function renderProductsList() {
   const modal = document.getElementById('prodEditorModal');
+  const canEditCats = isAdminUser();
   modal.innerHTML = `
     <div class="avail-modal-handle"></div>
     <div class="avail-modal-header">
       <h2 class="avail-modal-title">🛠 Управление</h2>
       <button class="cart-modal-close" id="prodEditorClose">✕</button>
+    </div>
+    <div class="prod-tabs">
+      <button class="prod-tab prod-tab--active" id="tabProducts">📦 Товары</button>
+      ${canEditCats ? '<button class="prod-tab" id="tabCategories">🗂 Категории</button>' : ''}
     </div>
     <button class="prod-add-new-btn" id="prodAddNewBtn">＋ Добавить товар</button>
     <div class="prod-list" id="prodList">
@@ -936,12 +965,102 @@ function renderProductsList() {
   `;
   modal.querySelector('#prodEditorClose')?.addEventListener('click', closeProductsEditor);
   modal.querySelector('#prodAddNewBtn')?.addEventListener('click', openAddProduct);
+  modal.querySelector('#tabProducts')?.addEventListener('click', renderProductsList);
+  modal.querySelector('#tabCategories')?.addEventListener('click', renderCategoriesEditor);
   modal.querySelectorAll('.prod-edit-btn').forEach(btn =>
     btn.addEventListener('click', () => openProductEdit(+btn.dataset.id))
   );
   modal.querySelectorAll('.prod-delete-btn').forEach(btn =>
     btn.addEventListener('click', () => confirmDeleteProduct(+btn.dataset.id))
   );
+}
+
+// ── Редактор категорий (только для администраторов) ───────────
+
+function renderCategoriesEditor() {
+  if (!isAdminUser()) return;
+  const modal = document.getElementById('prodEditorModal');
+  modal.innerHTML = `
+    <div class="avail-modal-handle"></div>
+    <div class="avail-modal-header">
+      <h2 class="avail-modal-title">🛠 Управление</h2>
+      <button class="cart-modal-close" id="prodEditorClose">✕</button>
+    </div>
+    <div class="prod-tabs">
+      <button class="prod-tab" id="tabProducts">📦 Товары</button>
+      <button class="prod-tab prod-tab--active" id="tabCategories">🗂 Категории</button>
+    </div>
+    <div class="prod-list" id="catList">
+      ${CATEGORIES.map((c, i) => `
+        <div class="prod-list-item" id="cat-row-${i}">
+          <div class="cat-list-icon">${c.img ? `<img src="${c.img}" style="width:28px;height:28px;object-fit:contain" />` : (c.icon || '📦')}</div>
+          <div class="prod-list-info">
+            <div class="prod-list-name">${escHtml(c.label)}</div>
+            <div class="prod-list-meta">id: ${escHtml(c.id)}</div>
+          </div>
+          <div class="prod-list-actions">
+            <button class="prod-delete-btn cat-del-btn" data-index="${i}" title="Удалить">🗑</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <button class="prod-add-new-btn" id="catAddNewBtn">＋ Добавить категорию</button>
+    <div id="catAddForm" style="display:none;padding:12px 16px 0">
+      <label class="prod-field-label">ID категории (англ., без пробелов) *</label>
+      <input class="prod-field-input" id="catNewId" placeholder="my_category" maxlength="30" />
+      <label class="prod-field-label">Название *</label>
+      <input class="prod-field-input" id="catNewLabel" placeholder="Моя категория" maxlength="40" />
+      <label class="prod-field-label">Иконка (emoji, если нет картинки)</label>
+      <input class="prod-field-input" id="catNewIcon" placeholder="📦" maxlength="4" />
+      <button class="avail-save-btn" id="catNewSave" style="margin-top:10px">Добавить</button>
+    </div>
+  `;
+  modal.querySelector('#prodEditorClose')?.addEventListener('click', closeProductsEditor);
+  modal.querySelector('#tabProducts')?.addEventListener('click', renderProductsList);
+  modal.querySelector('#tabCategories')?.addEventListener('click', renderCategoriesEditor);
+  modal.querySelector('#catAddNewBtn')?.addEventListener('click', () => {
+    const form = document.getElementById('catAddForm');
+    if (form) form.style.display = form.style.display === 'none' ? '' : 'none';
+  });
+  modal.querySelector('#catNewSave')?.addEventListener('click', addCategory);
+  modal.querySelectorAll('.cat-del-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteCategory(+btn.dataset.index));
+  });
+}
+
+function addCategory() {
+  const id    = document.getElementById('catNewId')?.value.trim().replace(/\s+/g, '_').toLowerCase();
+  const label = document.getElementById('catNewLabel')?.value.trim();
+  const icon  = document.getElementById('catNewIcon')?.value.trim() || '📦';
+  if (!id)    return showToast('⚠️ Введите ID категории');
+  if (!label) return showToast('⚠️ Введите название категории');
+  if (CATEGORIES.find(c => c.id === id)) return showToast('⚠️ Категория с таким ID уже существует');
+  CATEGORIES.push({ id, label, img: null, icon });
+  saveCategories();
+}
+
+function deleteCategory(index) {
+  if (index < 0 || index >= CATEGORIES.length) return;
+  const cat = CATEGORIES[index];
+  if (!confirm(`Удалить категорию «${cat.label}»?`)) return;
+  CATEGORIES.splice(index, 1);
+  saveCategories();
+}
+
+function saveCategories() {
+  const exportData = CATEGORIES.map(c => ({
+    id: c.id, label: c.label,
+    img:     c.img     || null,
+    icon:    c.icon    || null,
+    imgSize: c.imgSize || null,
+  }));
+  if (tg?.sendData) {
+    tg.sendData(JSON.stringify({ type: 'categories', data: exportData }));
+  } else {
+    renderCategories();
+    renderCategoriesEditor();
+    showToast('✅ Категории обновлены (тест)');
+  }
 }
 
 function renderProductRow(p) {
@@ -981,7 +1100,7 @@ function confirmDeleteProduct(productId) {
 }
 
 function deleteProduct(productId) {
-  if (!isAdminUser() && tg) return;
+  if (!isAdminUser() && !isManagerUser() && tg) return;
   const idx = PRODUCTS.findIndex(p => p.id === productId);
   if (idx === -1) return;
   PRODUCTS.splice(idx, 1);
@@ -998,7 +1117,7 @@ function deleteProduct(productId) {
 // ── Форма редактирования / добавления ─────────────────────────
 
 function openAddProduct() {
-  if (!isAdminUser() && tg) return;
+  if (!isAdminUser() && !isManagerUser() && tg) return;
   editingProductId = null;
   editingIsNew     = true;
   pendingImageUpdate = false;
@@ -1012,7 +1131,7 @@ function openAddProduct() {
 }
 
 function openProductEdit(productId) {
-  if (!isAdminUser() && tg) return;
+  if (!isAdminUser() && !isManagerUser() && tg) return;
   editingProductId = productId;
   editingIsNew     = false;
   pendingImageUpdate = false;
@@ -1151,7 +1270,7 @@ function buildExportData() {
 }
 
 function saveProduct(productId) {
-  if (!isAdminUser() && tg) return;
+  if (!isAdminUser() && !isManagerUser() && tg) return;
 
   const name         = document.getElementById('peditName')?.value.trim();
   const price        = parseInt(document.getElementById('peditPrice')?.value, 10);

@@ -32,6 +32,7 @@ if _env_file.exists():
             os.environ.setdefault(_k.strip(), _v.strip())
 from telegram import (
     Update, WebAppInfo, KeyboardButton, ReplyKeyboardMarkup,
+    InlineKeyboardButton, InlineKeyboardMarkup,
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -127,6 +128,9 @@ typing_state: dict[int, dict] = {}
 # Глобальный объект приложения PTB (для доступа из API-хендлеров)
 _bot_app = None
 
+# Администраторы в режиме создания поста: {user_id}
+admin_post_state: set[int] = set()
+
 # {user_id: {name, username, unread, last_msg, last_time}}
 customer_chats: dict[int, dict] = {}
 
@@ -155,7 +159,9 @@ AVAILABILITY_FILE    = _BASE / "webapp" / "availability.json"
 CUSTOMER_CHATS_FILE  = _BASE / "customer_chats.json"
 SUPPORT_USERS_FILE   = _BASE / "support_users.json"
 PRODUCTS_FILE        = _BASE / "webapp" / "products.json"
+CATEGORIES_FILE      = _BASE / "webapp" / "categories.json"
 GITHUB_PRODUCTS_PATH = "webapp/products.json"
+GITHUB_CATS_PATH     = "webapp/categories.json"
 CHAT_MESSAGES_FILE   = _BASE / "chat_messages.json"
 
 
@@ -265,6 +271,47 @@ def push_products_github(data: list) -> bool:
             return resp.status in (200, 201)
     except Exception as e:
         logger.warning("GitHub products API error: %s", e)
+        return False
+
+def save_categories_local(data: list) -> None:
+    try:
+        CATEGORIES_FILE.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception as e:
+        logger.warning("save categories: %s", e)
+
+def push_categories_github(data: list) -> bool:
+    if not GITHUB_TOKEN:
+        return False
+    try:
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_CATS_PATH}"
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
+        }
+        sha = ""
+        try:
+            req = urllib.request.Request(api_url, headers=headers)
+            with urllib.request.urlopen(req) as resp:
+                sha = json.loads(resp.read()).get("sha", "")
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                raise
+        payload_d: dict = {
+            "message": "Update categories via bot",
+            "content": base64.b64encode(
+                json.dumps(data, ensure_ascii=False, indent=2).encode()
+            ).decode(),
+        }
+        if sha:
+            payload_d["sha"] = sha
+        req = urllib.request.Request(api_url, data=json.dumps(payload_d).encode(), headers=headers, method="PUT")
+        with urllib.request.urlopen(req) as resp:
+            return resp.status in (200, 201)
+    except Exception as e:
+        logger.warning("GitHub categories API error: %s", e)
         return False
 
 def push_image_github(img_bytes: bytes, path: str) -> bool:
@@ -556,9 +603,10 @@ def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton("🛍 Магазин", web_app=WebAppInfo(url=WEBAPP_URL))],
+            [KeyboardButton("💬 Написать менеджеру", web_app=WebAppInfo(url=WEBAPP_URL + "?open=chat"))],
         ],
         resize_keyboard=True,
-        input_field_placeholder="Открой магазин...",
+        input_field_placeholder="Открой магазин или напиши нам...",
     )
 
 
@@ -646,11 +694,18 @@ async def api_send(request: web.Request) -> web.Response:
         name = 'Администратор Akva Store' if uid in ADMIN_IDS else 'Менеджер Akva Store'
         msg  = add_chat_message(customer_id, 'manager', text, name)
         if _bot_app:
+            chat_kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "💬 Ответить в чате",
+                    web_app=WebAppInfo(url=f"{WEBAPP_URL}?open=chat"),
+                )
+            ]])
             try:
                 await _bot_app.bot.send_message(
                     chat_id=customer_id,
-                    text=f"💬 <b>Ответ от менеджера Akva Store:</b>\n\n{html.escape(text)}",
+                    text=f"💬 <b>Вам ответил менеджер Akva Store</b>\n\n{html.escape(text)}\n\n<i>Нажмите кнопку, чтобы написать в ответ</i>",
                     parse_mode="HTML",
+                    reply_markup=chat_kb,
                 )
             except Exception as e:
                 logger.warning("send to customer %s: %s", customer_id, e)
@@ -686,9 +741,16 @@ async def api_send(request: web.Request) -> web.Response:
                 f"👤 <a href='tg://user?id={customer_id}'>{safe_name}</a>\n\n"
                 f"✉️ {safe_text}"
             )
+            reply_kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    f"💬 Ответить {name}",
+                    web_app=WebAppInfo(url=f"{WEBAPP_URL}?open=chat&cid={customer_id}"),
+                )
+            ]])
             for mid in MANAGER_IDS | ADMIN_IDS:
                 try:
-                    await _bot_app.bot.send_message(chat_id=mid, text=mgr_text, parse_mode="HTML")
+                    await _bot_app.bot.send_message(chat_id=mid, text=mgr_text, parse_mode="HTML",
+                                                    reply_markup=reply_kb)
                 except Exception as e:
                     logger.warning("notify mgr %s: %s", mid, e)
 
@@ -873,10 +935,18 @@ async def api_order(request: web.Request) -> web.Response:
             f"{total_html}\n"
             f"🕐 {now_str()}"
         )
+        fname = full_name.split()[0] if full_name else 'клиенту'
+        order_reply_kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton(
+                f"💬 Ответить {fname}",
+                web_app=WebAppInfo(url=f"{WEBAPP_URL}?open=chat&cid={uid}"),
+            )
+        ]])
         for mid in MANAGER_IDS | ADMIN_IDS:
             try:
                 await _bot_app.bot.send_message(
                     chat_id=mid, text=order_text, parse_mode="HTML",
+                    reply_markup=order_reply_kb,
                 )
             except Exception as e:
                 logger.warning("order notify mgr %s: %s", mid, e)
@@ -938,9 +1008,26 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("❌ Ошибка данных.")
         return
 
-    # ── Обновление каталога товаров (только администраторы) ─
-    if isinstance(data_peek, dict) and data_peek.get("type") == "products":
+    # ── Обновление категорий (только администраторы) ─────────
+    if isinstance(data_peek, dict) and data_peek.get("type") == "categories":
         if not is_admin(update):
+            return
+        cats_data = data_peek.get("data", [])
+        if not isinstance(cats_data, list):
+            await update.message.reply_text("❌ Некорректные данные категорий.")
+            return
+        save_categories_local(cats_data)
+        ok_github = push_categories_github(cats_data)
+        status = "✅ GitHub обновлён" if ok_github else "⚠️ GitHub не обновлён"
+        await update.message.reply_text(
+            f"🗂 <b>Категории обновлены!</b>\n\nКатегорий: <b>{len(cats_data)}</b>\n{status}",
+            parse_mode="HTML",
+        )
+        return
+
+    # ── Обновление каталога товаров (менеджеры и администраторы) ─
+    if isinstance(data_peek, dict) and data_peek.get("type") == "products":
+        if not is_manager(update):
             return
         products_data = data_peek.get("data", [])
         if not isinstance(products_data, list) or not products_data:
@@ -1175,10 +1262,13 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     save_support_users()
     save_customer_chats()
 
+    open_chat_kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("💬 Написать менеджеру", web_app=WebAppInfo(url=f"{WEBAPP_URL}?open=chat"))
+    ]])
     await update.message.reply_text(
-        f"✅ <b>Заказ принят!</b>\n\n{lines}\n\n{total_msg}\n\n"
-        "💬 Откройте приложение — там можно написать менеджеру.",
+        f"✅ <b>Заказ принят!</b>\n\n{lines}\n\n{total_msg}",
         parse_mode="HTML",
+        reply_markup=open_chat_kb,
     )
 
     # ── 8. Уведомление ВСЕМ менеджерам ───────────────────────
@@ -1203,36 +1293,85 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         f"{total_admin}\n"
         f"🕐 {now_str()}"
     )
-    await notify_managers(ctx, order_text)
+    mgr_reply_kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            f"💬 Ответить {user.first_name or 'клиенту'}",
+            web_app=WebAppInfo(url=f"{WEBAPP_URL}?open=chat&cid={user.id}"),
+        )
+    ]])
+    await notify_managers(ctx, order_text, reply_markup=mgr_reply_kb)
 
 
 
 
-async def handle_admin_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """Фото от администратора → загружаем в репозиторий как изображение товара."""
+async def handle_admin_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Текст / фото от администратора или менеджера: пост-рассылка или загрузка фото товара."""
     uid = update.effective_user.id
-    if uid not in ADMIN_IDS:
+    if uid not in ADMIN_IDS and uid not in MANAGER_IDS:
+        return
+
+    # ── Режим создания поста (только администраторы) ──────────
+    if uid in ADMIN_IDS and uid in admin_post_state:
+        admin_post_state.discard(uid)
+        text  = (update.message.caption or update.message.text or '').strip()
+        photo = update.message.photo[-1] if update.message.photo else None
+
+        recipients = list(customer_chats.keys())
+        if not recipients:
+            await update.message.reply_text("📭 Нет получателей (ни один клиент ещё не писал боту).")
+            return
+
+        sent = failed = 0
+        for cid in recipients:
+            try:
+                if photo:
+                    await ctx.bot.send_photo(
+                        chat_id=cid,
+                        photo=photo.file_id,
+                        caption=f"📢 <b>Akva Store</b>\n\n{html.escape(text)}" if text else "📢 <b>Akva Store</b>",
+                        parse_mode="HTML",
+                    )
+                else:
+                    await ctx.bot.send_message(
+                        chat_id=cid,
+                        text=f"📢 <b>Akva Store</b>\n\n{html.escape(text)}",
+                        parse_mode="HTML",
+                    )
+                sent += 1
+            except Exception as e:
+                logger.warning("post to %s failed: %s", cid, e)
+                failed += 1
+
+        await update.message.reply_text(
+            f"✅ Пост разослан!\n\n"
+            f"Доставлено: <b>{sent}</b>\n"
+            f"Ошибок: <b>{failed}</b>",
+            parse_mode="HTML",
+        )
+        return
+
+    # ── Загрузка фото товара ──────────────────────────────────
+    if not update.message.photo:
         return
 
     queue = pending_image_uploads.get(uid)
     if not queue:
-        return  # не ждали фото
+        return
 
-    item = queue[0]
+    item         = queue[0]
     product_id   = item["id"]
     product_name = item["name"]
 
-    # Берём наиболее качественное фото
     photo = update.message.photo[-1]
     try:
-        file     = await ctx.bot.get_file(photo.file_id)
+        file      = await ctx.bot.get_file(photo.file_id)
         img_bytes = await file.download_as_bytearray()
     except Exception as e:
         logger.warning("download photo error: %s", e)
         await update.message.reply_text("❌ Не удалось скачать фото. Попробуйте ещё раз.")
         return
 
-    img_path   = f"product_{product_id}.jpg"
+    img_path    = f"product_{product_id}.jpg"
     github_path = f"webapp/images/{img_path}"
 
     ok = push_image_github(bytes(img_bytes), github_path)
@@ -1240,7 +1379,6 @@ async def handle_admin_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("❌ Не удалось загрузить фото в GitHub. Проверьте токен.")
         return
 
-    # Обновляем products.json с новым путём к фото
     global PRODUCTS_DATA
     for p in PRODUCTS_DATA:
         if int(p.get("id", 0)) == product_id:
@@ -1249,14 +1387,13 @@ async def handle_admin_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     save_products_local(PRODUCTS_DATA)
     push_products_github(PRODUCTS_DATA)
 
-    # Удаляем обработанный элемент из очереди
     queue.pop(0)
     if not queue:
         del pending_image_uploads[uid]
 
     await update.message.reply_text(
         f"✅ Фото товара <b>{html.escape(product_name)}</b> обновлено!\n"
-        f"Появится на сайте через ~1 минуту 🌊",
+        "Появится на сайте через ~1 минуту 🌊",
         parse_mode="HTML",
     )
 
@@ -1267,6 +1404,19 @@ async def handle_admin_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
             f"<b>«{html.escape(next_item['name'])}»</b>",
             parse_mode="HTML",
         )
+
+
+async def cmd_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """/post — рассылка новостей/поступлений всем клиентам (только администратор)."""
+    if not is_admin(update):
+        return
+    admin_post_state.add(update.effective_user.id)
+    await update.message.reply_text(
+        "📢 <b>Создать пост</b>\n\n"
+        "Отправьте текст (можно с фото).\n"
+        "Пост будет разослан всем клиентам, которые взаимодействовали с ботом.",
+        parse_mode="HTML",
+    )
 
 
 async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1394,13 +1544,16 @@ async def _run() -> None:
 
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("promo", cmd_promo))
+    application.add_handler(CommandHandler("post",  cmd_post))
 
     application.add_handler(MessageHandler(
         filters.StatusUpdate.WEB_APP_DATA, handle_order
     ))
     application.add_handler(MessageHandler(
-        filters.Chat(list(ADMIN_IDS)) & filters.PHOTO,
-        handle_admin_photo,
+        filters.Chat(list(ADMIN_IDS | MANAGER_IDS))
+        & (filters.TEXT | filters.PHOTO)
+        & ~filters.COMMAND,
+        handle_admin_message,
     ))
     application.add_handler(CallbackQueryHandler(handle_callback))
 
