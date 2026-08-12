@@ -4,17 +4,23 @@ Telegram-бот магазина Akva Store
 Запуск: python bot.py
 """
 
+import asyncio
 import base64
+import hashlib
+import hmac
 import html
 import json
 import logging
 import os
 import time
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 
 import urllib.request
 import urllib.error
+
+from aiohttp import web
 
 # Загружаем .env если есть (без внешних библиотек)
 _env_file = Path(__file__).parent / ".env"
@@ -46,6 +52,7 @@ WEBAPP_URL = "https://deadlyxsa.github.io/akva-store/webapp/"
 GITHUB_TOKEN    = os.getenv("GITHUB_TOKEN", "")
 GITHUB_REPO     = "deadlyxsa/akva-store"
 GITHUB_AVL_PATH = "webapp/availability.json"
+BOT_API_URL     = os.getenv("BOT_API_URL", "").rstrip("/")
 
 # ── Роли ──────────────────────────────────────────────────────
 # ADMIN_ID  — управляет промокодами, настройками бота (/promo)
@@ -114,6 +121,14 @@ PRODUCTS_DATA: list = []
 # Очередь смены фото: {admin_id: [{'id': 5, 'name': 'УБИВАШКА'}, ...]}
 pending_image_uploads: dict[int, list] = {}
 
+# In-app чат: {customer_id: [{'role','text','ts','name'}]}
+chat_messages: dict[int, list] = {}
+# Typing state: {customer_id: {'manager_until': float, 'customer_until': float}}
+typing_state: dict[int, dict] = {}
+
+# Глобальный объект приложения PTB (для доступа из API-хендлеров)
+_bot_app = None
+
 # {user_id: {name, username, unread, last_msg, last_time}}
 customer_chats: dict[int, dict] = {}
 
@@ -148,6 +163,7 @@ CUSTOMER_CHATS_FILE  = _BASE / "customer_chats.json"
 SUPPORT_USERS_FILE   = _BASE / "support_users.json"
 PRODUCTS_FILE        = _BASE / "webapp" / "products.json"
 GITHUB_PRODUCTS_PATH = "webapp/products.json"
+CHAT_MESSAGES_FILE   = _BASE / "chat_messages.json"
 
 
 def load_promo_usage() -> None:
@@ -327,6 +343,89 @@ def save_support_users() -> None:
         )
     except Exception as e:
         logger.warning("save support_users: %s", e)
+
+def load_chat_messages() -> None:
+    if CHAT_MESSAGES_FILE.exists():
+        try:
+            data = json.loads(CHAT_MESSAGES_FILE.read_text(encoding="utf-8"))
+            for uid_str, msgs in data.items():
+                chat_messages[int(uid_str)] = msgs
+        except Exception as e:
+            logger.warning("chat_messages.json: %s", e)
+
+def save_chat_messages() -> None:
+    try:
+        CHAT_MESSAGES_FILE.write_text(
+            json.dumps({str(k): v[-200:] for k, v in chat_messages.items()},
+                       ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        logger.warning("save chat_messages: %s", e)
+
+def add_chat_message(customer_id: int, role: str, text: str, name: str = '') -> dict:
+    msg = {'role': role, 'text': text, 'ts': time.time(), 'name': name}
+    chat_messages.setdefault(customer_id, []).append(msg)
+    if len(chat_messages[customer_id]) > 200:
+        chat_messages[customer_id] = chat_messages[customer_id][-200:]
+    save_chat_messages()
+    return msg
+
+def verify_init_data(raw: str) -> dict | None:
+    """Проверяет Telegram WebApp initData. Возвращает user dict или None."""
+    try:
+        if not raw:
+            return None
+        params = dict(urllib.parse.parse_qsl(raw, keep_blank_values=True))
+        recv_hash = params.pop('hash', '')
+        if not recv_hash:
+            return None
+        check_str = '\n'.join(f'{k}={v}' for k, v in sorted(params.items()))
+        secret    = hmac.new(b'WebAppData', BOT_TOKEN.encode(), hashlib.sha256).digest()
+        computed  = hmac.new(secret, check_str.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(computed, recv_hash):
+            return None
+        return json.loads(params.get('user', '{}'))
+    except Exception as e:
+        logger.warning("verify_init_data: %s", e)
+        return None
+
+def push_config_github() -> bool:
+    """Публикует webapp/config.json с API URL в GitHub Pages."""
+    if not GITHUB_TOKEN or not BOT_API_URL:
+        return False
+    try:
+        path    = "webapp/config.json"
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
+        }
+        sha = ""
+        try:
+            req = urllib.request.Request(api_url, headers=headers)
+            with urllib.request.urlopen(req) as resp:
+                sha = json.loads(resp.read()).get("sha", "")
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                raise
+        config_bytes = json.dumps({"api_url": BOT_API_URL}, ensure_ascii=False).encode()
+        payload: dict = {
+            "message": "Update chat API config",
+            "content": base64.b64encode(config_bytes).decode(),
+        }
+        if sha:
+            payload["sha"] = sha
+        req = urllib.request.Request(api_url, data=json.dumps(payload).encode(), headers=headers, method="PUT")
+        with urllib.request.urlopen(req) as resp:
+            ok = resp.status in (200, 201)
+        if ok:
+            logger.info("config.json → GitHub ✓  api_url=%s", BOT_API_URL)
+        return ok
+    except Exception as e:
+        logger.warning("push_config: %s", e)
+        return False
 
 def is_msg_rate_limited(user_id: int) -> bool:
     """True если клиент превысил лимит сообщений."""
@@ -530,6 +629,335 @@ def chat_text(uid: int) -> str:
         "<i>← Все чаты — вернуться к списку\n"
         "✅ Закрыть чат — завершить диалог</i>"
     )
+
+
+# ══════════════════════════════════════════════════════════════
+#   HTTP API (aiohttp) — IN-APP CHAT
+# ══════════════════════════════════════════════════════════════
+
+@web.middleware
+async def cors_middleware(request: web.Request, handler):
+    if request.method == 'OPTIONS':
+        return web.Response(headers={
+            'Access-Control-Allow-Origin':  '*',
+            'Access-Control-Allow-Headers': 'Content-Type, X-Init-Data',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        })
+    response = await handler(request)
+    response.headers['Access-Control-Allow-Origin']  = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Init-Data'
+    return response
+
+async def _handle_options(r: web.Request) -> web.Response:
+    return web.Response(headers={
+        'Access-Control-Allow-Origin':  '*',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Init-Data',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    })
+
+async def api_poll(request: web.Request) -> web.Response:
+    user = verify_init_data(request.headers.get('X-Init-Data', ''))
+    if not user:
+        return web.json_response({'error': 'Unauthorized'}, status=401)
+
+    uid    = int(user.get('id', 0))
+    is_mgr = uid in MANAGER_IDS or uid in ADMIN_IDS
+
+    if is_mgr:
+        cid_str = request.rel_url.query.get('customer_id', '')
+        if not cid_str:
+            return web.json_response({'error': 'customer_id required'}, status=400)
+        customer_id = int(cid_str)
+    else:
+        customer_id = uid
+
+    since = float(request.rel_url.query.get('since', '0'))
+    msgs  = [m for m in chat_messages.get(customer_id, []) if m['ts'] > since]
+
+    now     = time.time()
+    t_state = typing_state.get(customer_id, {})
+    return web.json_response({
+        'messages':       msgs,
+        'manager_typing': t_state.get('manager_until', 0) > now,
+        'customer_typing': t_state.get('customer_until', 0) > now,
+        'ts':             now,
+    })
+
+async def api_send(request: web.Request) -> web.Response:
+    user = verify_init_data(request.headers.get('X-Init-Data', ''))
+    if not user:
+        return web.json_response({'error': 'Unauthorized'}, status=401)
+
+    uid    = int(user.get('id', 0))
+    is_mgr = uid in MANAGER_IDS or uid in ADMIN_IDS
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({'error': 'Invalid JSON'}, status=400)
+
+    text = str(body.get('text', '')).strip()[:MAX_MSG_LEN]
+    if not text:
+        return web.json_response({'error': 'Empty text'}, status=400)
+
+    if is_mgr:
+        customer_id = int(body.get('customer_id', 0))
+        if not customer_id or customer_id not in customer_chats:
+            return web.json_response({'error': 'customer_id required'}, status=400)
+        name = user.get('first_name', 'Менеджер')
+        msg  = add_chat_message(customer_id, 'manager', text, name)
+        if _bot_app:
+            try:
+                await _bot_app.bot.send_message(
+                    chat_id=customer_id,
+                    text=f"💬 <b>Ответ от менеджера Akva Store:</b>\n\n{html.escape(text)}",
+                    parse_mode="HTML",
+                )
+            except Exception as e:
+                logger.warning("send to customer %s: %s", customer_id, e)
+    else:
+        customer_id = uid
+        if is_msg_rate_limited(uid):
+            return web.json_response({'error': 'Rate limited'}, status=429)
+
+        name     = user.get('first_name', 'Клиент')
+        uname    = user.get('username', '')
+        username = f"@{uname}" if uname else 'нет username'
+
+        if customer_id not in customer_chats and len(customer_chats) < MAX_CUSTOMERS:
+            customer_chats[customer_id] = {
+                'name': name, 'username': username,
+                'unread': 0, 'last_msg': text[:80], 'last_time': now_str(),
+            }
+
+        msg = add_chat_message(customer_id, 'customer', text, name)
+
+        if customer_id in customer_chats:
+            prev = customer_chats[customer_id].get('unread', 0)
+            customer_chats[customer_id].update(
+                {'unread': prev + 1, 'last_msg': text[:80], 'last_time': now_str()}
+            )
+            save_customer_chats()
+
+        if _bot_app:
+            safe_name = html.escape(name)
+            safe_text = html.escape(text)
+            mgr_text  = (
+                f"💬 <b>Чат — новое сообщение</b>\n\n"
+                f"👤 <a href='tg://user?id={customer_id}'>{safe_name}</a>\n\n"
+                f"✉️ {safe_text}"
+            )
+            for mid in MANAGER_IDS | ADMIN_IDS:
+                try:
+                    await _bot_app.bot.send_message(chat_id=mid, text=mgr_text, parse_mode="HTML",
+                                                    reply_markup=new_msg_kb(customer_id, name))
+                except Exception as e:
+                    logger.warning("notify mgr %s: %s", mid, e)
+
+    return web.json_response({'ok': True, 'msg': msg})
+
+async def api_typing(request: web.Request) -> web.Response:
+    user = verify_init_data(request.headers.get('X-Init-Data', ''))
+    if not user:
+        return web.json_response({'error': 'Unauthorized'}, status=401)
+
+    uid    = int(user.get('id', 0))
+    is_mgr = uid in MANAGER_IDS or uid in ADMIN_IDS
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    now = time.time()
+    if is_mgr:
+        customer_id = int(body.get('customer_id', 0))
+        if customer_id:
+            typing_state.setdefault(customer_id, {})['manager_until'] = now + 4
+    else:
+        typing_state.setdefault(uid, {})['customer_until'] = now + 4
+
+    return web.json_response({'ok': True})
+
+async def api_rooms(request: web.Request) -> web.Response:
+    user = verify_init_data(request.headers.get('X-Init-Data', ''))
+    if not user:
+        return web.json_response({'error': 'Unauthorized'}, status=401)
+
+    uid = int(user.get('id', 0))
+    if uid not in MANAGER_IDS and uid not in ADMIN_IDS:
+        return web.json_response({'error': 'Forbidden'}, status=403)
+
+    rooms = [
+        {
+            'customer_id': cid,
+            'name':        info.get('name', 'Клиент'),
+            'username':    info.get('username', ''),
+            'unread':      info.get('unread', 0),
+            'last_msg':    info.get('last_msg', ''),
+            'last_time':   info.get('last_time', ''),
+        }
+        for cid, info in customer_chats.items()
+    ]
+    rooms.sort(key=lambda r: r['unread'], reverse=True)
+    return web.json_response({'rooms': rooms})
+
+async def api_order(request: web.Request) -> web.Response:
+    """Приём заказа через HTTP API — клиент остаётся в чате."""
+    user = verify_init_data(request.headers.get('X-Init-Data', ''))
+    if not user:
+        return web.json_response({'error': 'Unauthorized'}, status=401)
+
+    uid = int(user.get('id', 0))
+    if uid in MANAGER_IDS or uid in ADMIN_IDS:
+        return web.json_response({'error': 'Forbidden'}, status=403)
+
+    # Кулдаун
+    now  = datetime.now()
+    last = last_order_time.get(uid)
+    if last:
+        remaining = int(ORDER_COOLDOWN - (now - last).total_seconds())
+        if remaining > 0:
+            return web.json_response({'error': 'cooldown', 'seconds': remaining}, status=429)
+
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({'error': 'Invalid JSON'}, status=400)
+
+    items_raw = data.get('items', [])
+    if not isinstance(items_raw, list) or not items_raw:
+        return web.json_response({'error': 'Empty cart'}, status=400)
+    if len(items_raw) > MAX_ITEMS_ORDER:
+        return web.json_response({'error': 'Too many items'}, status=400)
+
+    validated_items = []
+    for raw_item in items_raw:
+        if not isinstance(raw_item, dict):
+            return web.json_response({'error': 'Invalid item'}, status=400)
+        pid     = raw_item.get('product_id')
+        variant = raw_item.get('variant', '')
+        qty     = raw_item.get('qty', 0)
+        if not isinstance(pid, int) or pid not in PRODUCTS_CATALOG:
+            return web.json_response({'error': f'Invalid product {pid}'}, status=400)
+        if not isinstance(qty, int) or qty < 1 or qty > MAX_QTY_PER_ITEM:
+            return web.json_response({'error': 'Invalid qty'}, status=400)
+        if not isinstance(variant, str) or not variant.strip() or len(variant) > 100:
+            return web.json_response({'error': 'Invalid variant'}, status=400)
+        product = PRODUCTS_CATALOG[pid]
+        validated_items.append({
+            'name':  f"{product['name']} ({variant.strip()})",
+            'price': product['price'],
+            'qty':   qty,
+            'total': product['price'] * qty,
+        })
+
+    original_total = sum(it['total'] for it in validated_items)
+
+    # Промокод
+    promo_code   = str(data.get('promo_code', '')).upper().strip()[:20]
+    discount_pct = 0
+    promo_note   = ''
+    if promo_code:
+        if not is_promo_rate_limited(uid):
+            info = promo_codes.get(promo_code)
+            if (info
+                    and promo_usage.get(promo_code, 0) < info['max_uses']
+                    and not user_already_used_promo(uid, promo_code)):
+                discount_pct = info['discount']
+                promo_usage[promo_code] = promo_usage.get(promo_code, 0) + 1
+                record_user_promo(uid, promo_code)
+                save_promo_usage()
+                promo_note = f"🏷 {promo_code} · -{discount_pct}%"
+            else:
+                record_promo_failure(uid)
+
+    final_total = round(original_total * (1 - discount_pct / 100))
+    last_order_time[uid] = now
+    save_order_cooldowns()
+
+    # Сохраняем клиента
+    uname     = user.get('username', '')
+    username  = f"@{uname}" if uname else 'нет username'
+    full_name = user.get('first_name', 'Клиент')
+    if user.get('last_name'):
+        full_name += ' ' + user['last_name']
+
+    if uid not in customer_chats and len(customer_chats) >= MAX_CUSTOMERS:
+        return web.json_response({'error': 'Service unavailable'}, status=503)
+
+    customer_chats[uid] = {
+        'name':      full_name,
+        'username':  username,
+        'unread':    customer_chats.get(uid, {}).get('unread', 0),
+        'last_msg':  f'Заказ на {final_total} руб.',
+        'last_time': now_str(),
+    }
+    support_users.add(uid)
+    save_support_users()
+    save_customer_chats()
+
+    # Системное сообщение в чат
+    lines = "\n".join(
+        f"• {it['name']} × {it['qty']} шт. = {it['total']} ₽"
+        for it in validated_items
+    )
+    if discount_pct:
+        total_line = f"Итого со скидкой {discount_pct}%: {final_total} ₽ (было {original_total} ₽)"
+    else:
+        total_line = f"Итого: {final_total} ₽"
+
+    sys_msg = (
+        f"✅ Заказ принят!\n\n{lines}\n\n{total_line}\n\n"
+        "📍 Напишите адрес доставки — менеджер свяжется с вами здесь."
+    )
+    add_chat_message(uid, 'system', sys_msg, 'Akva Store')
+
+    # Уведомление менеджерам в Telegram
+    if _bot_app:
+        safe_name = html.escape(full_name)
+        safe_uname = html.escape(username)
+        lines_html = "\n".join(
+            f"  • {html.escape(it['name'])} × {it['qty']} шт. = <b>{it['total']} ₽</b>"
+            for it in validated_items
+        )
+        total_html = (
+            f"💰 <b>Итого: {final_total} ₽</b>  <s>({original_total} ₽)</s>"
+            if discount_pct else
+            f"💰 <b>Итого: {final_total} ₽</b>"
+        )
+        order_text = (
+            f"🛒 <b>Новый заказ (чат)!</b>\n\n"
+            f"👤 <a href='tg://user?id={uid}'>{safe_name}</a>\n"
+            f"📱 {safe_uname} | <code>{uid}</code>\n\n"
+            f"📦 <b>Состав:</b>\n{lines_html}\n"
+            f"{chr(10) + promo_note if promo_note else ''}\n"
+            f"{total_html}\n"
+            f"🕐 {now_str()}"
+        )
+        fname = full_name.split()[0] if full_name else 'Клиент'
+        for mid in MANAGER_IDS | ADMIN_IDS:
+            try:
+                await _bot_app.bot.send_message(
+                    chat_id=mid, text=order_text, parse_mode="HTML",
+                    reply_markup=new_msg_kb(uid, fname),
+                )
+            except Exception as e:
+                logger.warning("order notify mgr %s: %s", mid, e)
+
+    return web.json_response({'ok': True, 'total': final_total,
+                              'original_total': original_total, 'discount_pct': discount_pct})
+
+def make_api_app() -> web.Application:
+    api = web.Application(middlewares=[cors_middleware])
+    api.router.add_route('OPTIONS', '/{path_info:.*}', _handle_options)
+    api.router.add_get('/api/poll',   api_poll)
+    api.router.add_post('/api/send',  api_send)
+    api.router.add_post('/api/typing', api_typing)
+    api.router.add_get('/api/rooms',  api_rooms)
+    api.router.add_post('/api/order', api_order)
+    api.router.add_get('/health',     lambda r: web.Response(text='ok'))
+    return api
 
 
 # ══════════════════════════════════════════════════════════════
@@ -920,6 +1348,7 @@ async def handle_customer_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -
         "last_time": t,
     }
     save_customer_chats()
+    add_chat_message(user.id, 'customer', text, user.full_name)
 
     safe_name     = html.escape(user.full_name)
     safe_username = html.escape(username)
@@ -1051,6 +1480,7 @@ async def handle_manager_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) ->
             text=f"💬 <b>Ответ от менеджера Akva Store:</b>\n\n{text}",
             parse_mode="HTML",
         )
+        add_chat_message(uid, 'manager', text, update.effective_user.first_name)
         await update.message.reply_text(
             f"✅ Доставлено <b>{info.get('name', uid)}</b>",
             parse_mode="HTML",
@@ -1299,6 +1729,68 @@ async def cmd_promo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 #   ТОЧКА ВХОДА
 # ══════════════════════════════════════════════════════════════
 
+async def _run() -> None:
+    global _bot_app
+
+    application = Application.builder().token(BOT_TOKEN).build()
+    _bot_app = application
+
+    application.add_handler(CommandHandler("start",   cmd_start))
+    application.add_handler(CommandHandler("panel",   cmd_panel))
+    application.add_handler(CommandHandler("write",   cmd_write))
+    application.add_handler(CommandHandler("clients", cmd_clients))
+    application.add_handler(CommandHandler("promo",   cmd_promo))
+
+    application.add_handler(MessageHandler(
+        filters.Regex("💬 Связаться с менеджером"), btn_contact
+    ))
+    application.add_handler(MessageHandler(
+        filters.StatusUpdate.WEB_APP_DATA, handle_order
+    ))
+    application.add_handler(MessageHandler(
+        filters.Chat(list(ADMIN_IDS)) & filters.PHOTO,
+        handle_admin_photo,
+    ))
+    application.add_handler(CallbackQueryHandler(handle_callback))
+
+    all_manager_ids = list(MANAGER_IDS | ADMIN_IDS)
+    application.add_handler(MessageHandler(
+        filters.Chat(all_manager_ids) & filters.TEXT & ~filters.COMMAND,
+        handle_manager_text,
+    ))
+    application.add_handler(MessageHandler(
+        ~filters.Chat(all_manager_ids) & filters.TEXT & ~filters.COMMAND,
+        handle_customer_text,
+    ))
+
+    logger.info("✅ Akva Store бот запущен | Админы: %s | Менеджеры: %s", ADMIN_IDS, MANAGER_IDS)
+
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+
+    # HTTP API для in-app чата
+    port   = int(os.getenv("PORT", 8080))
+    api    = make_api_app()
+    runner = web.AppRunner(api)
+    await runner.setup()
+    await web.TCPSite(runner, '0.0.0.0', port).start()
+    logger.info("💬 Chat API запущен на порту %d", port)
+
+    # Публикуем config.json на GitHub Pages
+    if BOT_API_URL and GITHUB_TOKEN:
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(None, push_config_github)
+
+    try:
+        await asyncio.Event().wait()
+    finally:
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
+        await runner.cleanup()
+
+
 def main() -> None:
     load_promo_usage()
     load_promo_user_usage()
@@ -1306,41 +1798,8 @@ def main() -> None:
     load_products()
     load_customer_chats()
     load_support_users()
-
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start",   cmd_start))
-    app.add_handler(CommandHandler("panel",   cmd_panel))
-    app.add_handler(CommandHandler("write",   cmd_write))
-    app.add_handler(CommandHandler("clients", cmd_clients))
-    app.add_handler(CommandHandler("promo",   cmd_promo))
-
-    app.add_handler(MessageHandler(
-        filters.Regex("💬 Связаться с менеджером"), btn_contact
-    ))
-    app.add_handler(MessageHandler(
-        filters.StatusUpdate.WEB_APP_DATA, handle_order
-    ))
-    app.add_handler(MessageHandler(
-        filters.Chat(list(ADMIN_IDS)) & filters.PHOTO,
-        handle_admin_photo,
-    ))
-    app.add_handler(CallbackQueryHandler(handle_callback))
-
-    all_manager_ids = list(MANAGER_IDS | ADMIN_IDS)
-    # Текст от менеджеров и админа
-    app.add_handler(MessageHandler(
-        filters.Chat(all_manager_ids) & filters.TEXT & ~filters.COMMAND,
-        handle_manager_text,
-    ))
-    # Текст от клиентов (не менеджеры и не админ)
-    app.add_handler(MessageHandler(
-        ~filters.Chat(all_manager_ids) & filters.TEXT & ~filters.COMMAND,
-        handle_customer_text,
-    ))
-
-    logger.info("✅ Akva Store бот запущен | Админы: %s | Менеджеры: %s", ADMIN_IDS, MANAGER_IDS)
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    load_chat_messages()
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ const CATEGORY_DEFAULTS = {
   liquids:      { gradient: ['#1a0030', '#7c3aed'], emoji: '💧' },
   pods:         { gradient: ['#1e293b', '#94a3b8'], emoji: '🔋' },
   disposables:  { gradient: ['#0f3460', '#533483'], emoji: '💨' },
+  pouches:      { gradient: ['#1b3a4b', '#00b4d8'], emoji: '🫙' },
   snus:         { gradient: ['#1b4332', '#52b788'], emoji: '🌿' },
   accessories:  { gradient: ['#1e3a5f', '#38bdf8'], emoji: '🔧' },
 };
@@ -60,7 +61,8 @@ const PROMO_CODES = {
 const CATEGORIES = [
   { id: 'pods',         img: 'images/Под-системы.png', label: 'Под-системы' },
   { id: 'liquids',      img: 'images/Жидкость.png',    label: 'Жидкости'    },
-  { id: 'disposables',  img: 'images/Одноразки.png',   label: 'Одноразки', imgSize: 38  },
+  { id: 'pouches',      img: null,                      label: 'Паучи',       icon: '🫙'  },
+  { id: 'disposables',  img: 'images/Одноразки.png',   label: 'Одноразки',  imgSize: 38  },
   { id: 'snus',         img: 'images/снюс.png',        label: 'Снюс'        },
   { id: 'accessories',  img: 'images/Расходники.png',  label: 'Расходники'  },
 ];
@@ -75,6 +77,17 @@ let sortOrder      = 'default';  // 'default' | 'asc' | 'desc'
 let activePromo    = null;       // null | { code: string, discount: number }
 const cart = {};
 
+// URL HTTP API (загружается из config.json)
+let API_URL = '';
+
+// Состояние чата
+let chatView = 'chat';        // 'rooms' | 'chat'
+let chatCustomerId = null;    // для менеджеров — выбранный клиент
+let chatLastTs = 0;
+let chatPollTimer = null;
+let chatOpen = false;
+let chatTypingDebounce = null;
+
 // Наличие вкусов: { "productId:variant": true/false }
 let availability = {};
 // Черновик изменений в панели менеджера
@@ -84,6 +97,16 @@ let availDraft = {};
 const MANAGER_IDS_CLIENT = [878878846, 1947509265, 7555460392, 7883720545];
 // Только владельцы видят редактор товаров
 const ADMIN_IDS_CLIENT   = [878878846, 1947509265];
+
+async function loadConfig() {
+  try {
+    const r = await fetch('config.json?t=' + Date.now());
+    if (r.ok) {
+      const c = await r.json();
+      API_URL = (c.api_url || '').replace(/\/$/, '');
+    }
+  } catch (_) {}
+}
 
 async function loadAvailability() {
   try {
@@ -615,7 +638,7 @@ function checkCooldownOnOpen() {
 // ──────────────────────────────────────────────────────────────
 //  ОТПРАВКА ЗАКАЗА
 // ──────────────────────────────────────────────────────────────
-function submitOrder() {
+async function submitOrder() {
   const secs = getSecondsLeft();
   if (secs > 0) {
     const m = Math.floor(secs / 60), s = secs % 60;
@@ -635,13 +658,48 @@ function submitOrder() {
   // Промокод — только строка, не скидка (бот проверяет сам)
   const promoCode = (activePromo?.code || '').toUpperCase().trim().substring(0, 20);
 
+  if (API_URL) {
+    // Новый флоу: HTTP API → чат открывается автоматически
+    const btn = document.getElementById('confirmOrderBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Оформляем...'; }
+
+    try {
+      const resp = await fetch(`${API_URL}/api/order`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
+        body:    JSON.stringify({ items, promo_code: promoCode }),
+      });
+
+      if (resp.ok) {
+        localStorage.setItem(LS_KEY, Date.now().toString());
+        startCooldownUI();
+        clearCart();
+        closeCartModal();
+        openChat();   // автоматически открываем чат
+      } else {
+        const err = await resp.json().catch(() => ({}));
+        if (err.error === 'cooldown') {
+          const m = Math.floor(err.seconds / 60), s = err.seconds % 60;
+          showToast(`Подождите ${m}:${String(s).padStart(2, '0')} ⏳`);
+        } else {
+          showToast('Ошибка оформления заказа');
+        }
+        if (btn) { btn.disabled = false; btn.textContent = 'Оформить заказ 🚀'; }
+      }
+    } catch (_) {
+      showToast('Нет связи — попробуйте снова');
+      if (btn) { btn.disabled = false; btn.textContent = 'Оформить заказ 🚀'; }
+    }
+    return;
+  }
+
+  // Fallback: tg.sendData() (если API не настроен)
   localStorage.setItem(LS_KEY, Date.now().toString());
   startCooldownUI();
 
   if (tg?.sendData) {
     tg.sendData(JSON.stringify({ items, promo_code: promoCode }));
   } else {
-    // Только для теста в браузере
     const promoLine = promoCode ? `\nПромокод: ${promoCode}` : '';
     alert(`Заказ (тест):\n${items.map(i=>`ID${i.product_id} ${i.variant} x${i.qty}`).join('\n')}${promoLine}`);
   }
@@ -671,7 +729,7 @@ function plural(n) {
 // ──────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   tgInit();
-  await Promise.all([loadProducts(), loadAvailability()]);
+  await Promise.all([loadConfig(), loadProducts(), loadAvailability()]);
   renderCategories();
   renderProducts();
 
@@ -725,6 +783,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('editProductsBtn')?.addEventListener('click', openProductsEditor);
   document.getElementById('prodEditorClose')?.addEventListener('click', closeProductsEditor);
   document.getElementById('prodEditorOverlay')?.addEventListener('click', closeProductsEditor);
+
+  // Чат
+  document.getElementById('chatBtn')?.addEventListener('click', () => openChat());
+  document.getElementById('chatOverlay')?.addEventListener('click', closeChat);
+  document.getElementById('chatClose')?.addEventListener('click', closeChat);
+
+  const chatInput = document.getElementById('chatInput');
+  document.getElementById('chatSendBtn')?.addEventListener('click', sendChatMessage);
+  chatInput?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+  });
+  chatInput?.addEventListener('input', () => {
+    clearTimeout(chatTypingDebounce);
+    chatTypingDebounce = setTimeout(notifyTyping, 400);
+  });
 
   // Лайтбокс — просмотр фото по клику на карточку
   const lightbox      = document.getElementById('lightbox');
@@ -824,6 +897,11 @@ let pendingImageUpdate = false;
 function isAdminUser() {
   const uid = tg?.initDataUnsafe?.user?.id;
   return uid && ADMIN_IDS_CLIENT.includes(uid);
+}
+
+function isManagerUser() {
+  const uid = tg?.initDataUnsafe?.user?.id;
+  return uid && MANAGER_IDS_CLIENT.includes(uid);
 }
 
 function openProductsEditor() {
@@ -1111,6 +1189,260 @@ function saveProduct(productId) {
     renderProducts();
     showToast(editingIsNew ? '✅ Товар добавлен (тест)' : '✅ Товар обновлён (тест)');
   }
+}
+
+// ──────────────────────────────────────────────────────────────
+//  ЧАТ С МЕНЕДЖЕРОМ
+// ──────────────────────────────────────────────────────────────
+
+function openChat(preSelectedCustomerId = null) {
+  if (!API_URL) { showToast('Чат временно недоступен'); return; }
+
+  const isMgr = isManagerUser();
+  if (isMgr && !preSelectedCustomerId) {
+    chatView = 'rooms';
+    chatCustomerId = null;
+  } else {
+    chatView = 'chat';
+    chatCustomerId = preSelectedCustomerId || null;
+    chatLastTs = 0;
+  }
+
+  chatOpen = true;
+  document.getElementById('chatOverlay').classList.add('visible');
+  document.getElementById('chatModal').classList.add('visible');
+
+  if (chatView === 'rooms') {
+    renderRoomsView();
+  } else {
+    renderChatView();
+    startChatPoll();
+  }
+}
+
+function closeChat() {
+  chatOpen = false;
+  stopChatPoll();
+  document.getElementById('chatOverlay').classList.remove('visible');
+  document.getElementById('chatModal').classList.remove('visible');
+}
+
+function stopChatPoll() {
+  clearInterval(chatPollTimer);
+  chatPollTimer = null;
+}
+
+function startChatPoll() {
+  stopChatPoll();
+  pollChat();
+  chatPollTimer = setInterval(pollChat, 2500);
+}
+
+// ── Вид: список комнат (для менеджеров) ─────────────────────
+
+async function renderRoomsView() {
+  const body      = document.getElementById('chatBody');
+  const inputRow  = document.getElementById('chatInputRow');
+  const title     = document.getElementById('chatTitle');
+  const indicator = document.getElementById('chatTypingIndicator');
+  const header    = document.getElementById('chatHeader');
+
+  inputRow.classList.remove('visible');
+  indicator.classList.remove('visible');
+  title.textContent = '💬 Чаты клиентов';
+  header.querySelector('#chatBackBtn')?.remove();
+
+  body.innerHTML = '<div class="chat-loading">Загрузка...</div>';
+
+  try {
+    const resp = await fetch(`${API_URL}/api/rooms`, {
+      headers: { 'X-Init-Data': tg?.initData || '' },
+    });
+    if (!resp.ok) throw new Error(resp.status);
+    const data  = await resp.json();
+    const rooms = data.rooms || [];
+
+    if (!rooms.length) {
+      body.innerHTML = '<div class="chat-empty-hint">Нет активных чатов</div>';
+      return;
+    }
+
+    body.innerHTML = rooms.map(r => `
+      <div class="chat-room-item${r.unread > 0 ? ' chat-room-unread' : ''}" data-cid="${r.customer_id}">
+        <div class="chat-room-avatar">${escHtml(r.name.charAt(0).toUpperCase())}</div>
+        <div class="chat-room-info">
+          <div class="chat-room-name">${escHtml(r.name)}</div>
+          <div class="chat-room-last">${escHtml(r.last_msg || '')}</div>
+        </div>
+        ${r.unread > 0 ? `<div class="chat-room-badge">${r.unread}</div>` : ''}
+      </div>
+    `).join('');
+
+    body.querySelectorAll('.chat-room-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const room = rooms.find(r => r.customer_id === +el.dataset.cid);
+        selectRoom(+el.dataset.cid, room?.name || 'Клиент');
+      });
+    });
+  } catch (e) {
+    body.innerHTML = '<div class="chat-empty-hint">Ошибка загрузки</div>';
+  }
+}
+
+function selectRoom(customerId, customerName) {
+  chatCustomerId = customerId;
+  chatView       = 'chat';
+  chatLastTs     = 0;
+
+  const header = document.getElementById('chatHeader');
+  const title  = document.getElementById('chatTitle');
+  if (!header.querySelector('#chatBackBtn')) {
+    const btn = document.createElement('button');
+    btn.id        = 'chatBackBtn';
+    btn.className = 'prod-back-btn';
+    btn.textContent = '← Назад';
+    btn.addEventListener('click', () => {
+      stopChatPoll();
+      chatView = 'rooms';
+      btn.remove();
+      renderRoomsView();
+    });
+    header.insertBefore(btn, title);
+  }
+  title.textContent = `💬 ${customerName}`;
+
+  renderChatView();
+  startChatPoll();
+}
+
+// ── Вид: чат ────────────────────────────────────────────────
+
+function renderChatView() {
+  const body      = document.getElementById('chatBody');
+  const inputRow  = document.getElementById('chatInputRow');
+  const title     = document.getElementById('chatTitle');
+  const header    = document.getElementById('chatHeader');
+
+  if (!isManagerUser() && !header.querySelector('#chatBackBtn')) {
+    title.textContent = '💬 Чат с менеджером';
+  }
+  inputRow.classList.add('visible');
+  body.innerHTML = '<div class="chat-loading">Загрузка...</div>';
+}
+
+// ── Опрос новых сообщений ────────────────────────────────────
+
+async function pollChat() {
+  if (!chatOpen || chatView !== 'chat') return;
+  try {
+    const isMgr  = isManagerUser();
+    const params = new URLSearchParams({ since: chatLastTs });
+    if (isMgr && chatCustomerId) params.set('customer_id', chatCustomerId);
+
+    const resp = await fetch(`${API_URL}/api/poll?${params}`, {
+      headers: { 'X-Init-Data': tg?.initData || '' },
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    if (data.ts) chatLastTs = data.ts;
+
+    if (data.messages?.length) renderMessages(data.messages);
+    else {
+      const body = document.getElementById('chatBody');
+      if (body?.querySelector('.chat-loading')) {
+        body.innerHTML = '<div class="chat-empty-hint">Напишите первое сообщение...</div>';
+      }
+    }
+
+    const indicator = document.getElementById('chatTypingIndicator');
+    if (indicator) {
+      const showTyping = isMgr ? data.customer_typing : data.manager_typing;
+      indicator.classList.toggle('visible', !!showTyping);
+    }
+  } catch (_) {}
+}
+
+function renderMessages(messages) {
+  const body   = document.getElementById('chatBody');
+  const isMgr  = isManagerUser();
+  const myRole = isMgr ? 'manager' : 'customer';
+
+  if (body?.querySelector('.chat-loading') || body?.querySelector('.chat-empty-hint')) {
+    body.innerHTML = '';
+  }
+
+  messages.forEach(msg => {
+    const isMe     = msg.role === myRole;
+    const isSystem = msg.role === 'system';
+
+    const el  = document.createElement('div');
+    el.className = isSystem ? 'chat-msg chat-msg--system'
+                 : `chat-msg${isMe ? ' chat-msg--out' : ' chat-msg--in'}`;
+
+    const nameHtml = (!isMe && !isSystem && msg.name)
+      ? `<div class="chat-msg-name">${escHtml(msg.name)}</div>` : '';
+    const bubbleText = escHtml(msg.text).replace(/\n/g, '<br>');
+
+    el.innerHTML = `
+      ${nameHtml}
+      <div class="chat-msg-bubble">${bubbleText}</div>
+      <div class="chat-msg-time">${formatChatTime(msg.ts)}</div>
+    `;
+    body.appendChild(el);
+  });
+
+  body.scrollTop = body.scrollHeight;
+}
+
+function formatChatTime(ts) {
+  return new Date(ts * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ── Отправка сообщения ───────────────────────────────────────
+
+async function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const text  = input?.value.trim();
+  if (!text || !API_URL) return;
+
+  input.value = '';
+
+  const isMgr = isManagerUser();
+  const body  = { text };
+  if (isMgr && chatCustomerId) body.customer_id = chatCustomerId;
+
+  // Оптимистичный рендер
+  renderMessages([{
+    role: isMgr ? 'manager' : 'customer',
+    text,
+    ts:   Date.now() / 1000,
+    name: tg?.initDataUnsafe?.user?.first_name || '',
+  }]);
+
+  try {
+    await fetch(`${API_URL}/api/send`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
+      body:    JSON.stringify(body),
+    });
+  } catch (_) {
+    showToast('Ошибка отправки');
+  }
+}
+
+async function notifyTyping() {
+  if (!API_URL || !chatOpen || chatView !== 'chat') return;
+  const body = {};
+  const isMgr = isManagerUser();
+  if (isMgr && chatCustomerId) body.customer_id = chatCustomerId;
+  try {
+    await fetch(`${API_URL}/api/typing`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
+      body:    JSON.stringify(body),
+    });
+  } catch (_) {}
 }
 
 function escHtml(s) {

@@ -2,5 +2,6 @@
 *.json
 !webapp/availability.json
 !webapp/products.json
+!webapp/config.json
 __pycache__/
 *.pyc
