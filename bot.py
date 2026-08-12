@@ -825,12 +825,13 @@ async def api_order(request: web.Request) -> web.Response:
         return web.json_response({'error': 'Invalid JSON'}, status=400)
 
     # Данные из анкеты
-    payment      = str(data.get('payment',   '')).strip()[:50]
-    delivery     = str(data.get('delivery',  '')).strip()[:50]
-    form_name    = str(data.get('form_name', '')).strip()[:80]
-    form_phone   = str(data.get('phone',     '')).strip()[:30]
-    form_addr    = str(data.get('address',   '')).strip()[:200]
-    form_comment = str(data.get('comment',   '')).strip()[:300]
+    payment       = str(data.get('payment',      '')).strip()[:50]
+    delivery      = str(data.get('delivery',     '')).strip()[:50]
+    form_name     = str(data.get('form_name',    '')).strip()[:80]
+    form_phone    = str(data.get('phone',        '')).strip()[:30]
+    form_username = str(data.get('username_form','')).strip()[:50]
+    form_addr     = str(data.get('address',      '')).strip()[:200]
+    form_comment  = str(data.get('comment',      '')).strip()[:300]
 
     items_raw = data.get('items', [])
     if not isinstance(items_raw, list) or not items_raw:
@@ -915,12 +916,13 @@ async def api_order(request: web.Request) -> web.Response:
         total_line = f"Итого: {final_total} ₽"
 
     form_lines = ''
-    if payment:       form_lines += f"\n💳 Оплата: {payment}"
-    if delivery:      form_lines += f"\n🚚 Доставка: {delivery}"
-    if form_name:     form_lines += f"\n👤 Имя: {form_name}"
-    if form_phone:    form_lines += f"\n📞 Телефон: {form_phone}"
-    if form_addr:     form_lines += f"\n📍 Адрес: {form_addr}"
-    if form_comment:  form_lines += f"\n💬 {form_comment}"
+    if payment:        form_lines += f"\n💳 Оплата: {payment}"
+    if delivery:       form_lines += f"\n🚚 Доставка: {delivery}"
+    if form_name:      form_lines += f"\n👤 Имя: {form_name}"
+    if form_phone:     form_lines += f"\n📞 Телефон: {form_phone}"
+    if form_username:  form_lines += f"\n📱 Username: {form_username}"
+    if form_addr:      form_lines += f"\n📍 Адрес: {form_addr}"
+    if form_comment:   form_lines += f"\n💬 {form_comment}"
 
     sys_msg = (
         f"✅ Заказ принят!\n\n"
@@ -944,12 +946,13 @@ async def api_order(request: web.Request) -> web.Response:
             f"💰 <b>Итого: {final_total} ₽</b>"
         )
         form_html = ''
-        if payment:       form_html += f"\n💳 Оплата: <b>{html.escape(payment)}</b>"
-        if delivery:      form_html += f"\n🚚 Доставка: <b>{html.escape(delivery)}</b>"
-        if form_name:     form_html += f"\n👤 Имя: {html.escape(form_name)}"
-        if form_phone:    form_html += f"\n📞 Телефон: <code>{html.escape(form_phone)}</code>"
-        if form_addr:     form_html += f"\n📍 Адрес: {html.escape(form_addr)}"
-        if form_comment:  form_html += f"\n💬 {html.escape(form_comment)}"
+        if payment:        form_html += f"\n💳 Оплата: <b>{html.escape(payment)}</b>"
+        if delivery:       form_html += f"\n🚚 Доставка: <b>{html.escape(delivery)}</b>"
+        if form_name:      form_html += f"\n👤 Имя: {html.escape(form_name)}"
+        if form_phone:     form_html += f"\n📞 Телефон: <code>{html.escape(form_phone)}</code>"
+        if form_username:  form_html += f"\n📱 {html.escape(form_username)}"
+        if form_addr:      form_html += f"\n📍 Адрес: {html.escape(form_addr)}"
+        if form_comment:   form_html += f"\n💬 {html.escape(form_comment)}"
 
         order_text = (
             f"🛒 <b>Новый заказ (чат)!</b>\n\n"

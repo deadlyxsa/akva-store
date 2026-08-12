@@ -61,7 +61,6 @@ const PROMO_CODES = {
 let CATEGORIES = [
   { id: 'pods',         img: 'images/Под-системы.png', label: 'Под-системы' },
   { id: 'liquids',      img: 'images/Жидкость.png',    label: 'Жидкости'    },
-  { id: 'pouches',      img: null,                      label: 'Паучи',       icon: '🫙'  },
   { id: 'disposables',  img: 'images/Одноразки.png',   label: 'Одноразки',  imgSize: 38  },
   { id: 'snus',         img: 'images/снюс.png',        label: 'Снюс'        },
   { id: 'accessories',  img: 'images/Расходники.png',  label: 'Расходники'  },
@@ -1555,9 +1554,23 @@ function renderChatView() {
   const title     = document.getElementById('chatTitle');
   const header    = document.getElementById('chatHeader');
 
-  if (!isManagerUser() && !header.querySelector('#chatBackBtn')) {
+  if (!isManagerUser()) {
     title.textContent = '💬 Чат с менеджером';
+  } else if (chatCustomerId && !header.querySelector('#chatBackBtn')) {
+    // Менеджер открыл чат напрямую (через кнопку-уведомление), без перехода через список комнат
+    title.textContent = '💬 Чат с клиентом';
   }
+
+  // Кнопка "Завершить заказ" — добавляем если её ещё нет
+  if (isManagerUser() && chatCustomerId && !header.querySelector('#chatCloseOrderBtn')) {
+    const closeOrderBtn = document.createElement('button');
+    closeOrderBtn.id        = 'chatCloseOrderBtn';
+    closeOrderBtn.className = 'chat-close-order-btn';
+    closeOrderBtn.textContent = '✅ Завершить';
+    closeOrderBtn.addEventListener('click', () => closeOrder(chatCustomerId));
+    header.insertBefore(closeOrderBtn, document.getElementById('chatClose'));
+  }
+
   inputRow.classList.add('visible');
   body.innerHTML = '<div class="chat-loading">Загрузка...</div>';
 }
