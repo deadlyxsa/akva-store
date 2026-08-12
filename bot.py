@@ -660,6 +660,11 @@ async def api_poll(request: web.Request) -> web.Response:
     since = float(request.rel_url.query.get('since', '0'))
     msgs  = [m for m in chat_messages.get(customer_id, []) if m['ts'] > since]
 
+    # Сбрасываем счётчик непрочитанных когда менеджер читает чат
+    if is_mgr and customer_id in customer_chats and customer_chats[customer_id].get('unread', 0) > 0:
+        customer_chats[customer_id]['unread'] = 0
+        save_customer_chats()
+
     now     = time.time()
     t_state = typing_state.get(customer_id, {})
     return web.json_response({

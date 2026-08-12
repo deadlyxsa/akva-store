@@ -376,13 +376,15 @@ function setQty(key, qty) {
   if (!Object.keys(cart).length) closeCartModal();
 }
 
-function clearCart() {
+function clearCart(silent = false) {
   const productIds = [...new Set(Object.values(cart).map(x => x.productId))];
   Object.keys(cart).forEach(k => delete cart[k]);
   productIds.forEach(id => refreshCardUI(id));
   refreshCartBar();
-  closeCartModal();
-  showToast('Корзина очищена');
+  if (!silent) {
+    closeCartModal();
+    showToast('Корзина очищена');
+  }
 }
 
 function getProductQty(productId) {
@@ -680,8 +682,7 @@ async function submitOrder(formData = {}) {
       if (resp.ok) {
         localStorage.setItem(LS_KEY, Date.now().toString());
         startCooldownUI();
-        clearCart();
-        closeCartModal();
+        clearCart(true);  // silent — без тоста и закрытия (форма уже закрыта)
         openChat();   // автоматически открываем чат
       } else {
         const err = await resp.json().catch(() => ({}));
@@ -1608,26 +1609,33 @@ async function pollChat() {
   } catch (_) {}
 }
 
-async function closeOrder(customerId) {
-  if (!confirm('Завершить заказ? Клиент получит уведомление.')) return;
-  try {
-    const resp = await fetch(`${API_URL}/api/close_chat`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
-      body:    JSON.stringify({ customer_id: customerId }),
-    });
-    if (resp.ok) {
-      showToast('✅ Заказ завершён');
-      stopChatPoll();
-      chatView = 'rooms';
-      document.getElementById('chatHeader')?.querySelector('#chatBackBtn')?.remove();
-      document.getElementById('chatHeader')?.querySelector('#chatCloseOrderBtn')?.remove();
-      renderRoomsView();
-    } else {
-      showToast('Ошибка');
+function closeOrder(customerId) {
+  const doClose = async () => {
+    try {
+      const resp = await fetch(`${API_URL}/api/close_chat`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
+        body:    JSON.stringify({ customer_id: customerId }),
+      });
+      if (resp.ok) {
+        showToast('✅ Заказ завершён');
+        stopChatPoll();
+        chatView = 'rooms';
+        document.getElementById('chatHeader')?.querySelector('#chatBackBtn')?.remove();
+        document.getElementById('chatHeader')?.querySelector('#chatCloseOrderBtn')?.remove();
+        renderRoomsView();
+      } else {
+        showToast('Ошибка завершения');
+      }
+    } catch (_) {
+      showToast('Нет связи');
     }
-  } catch (_) {
-    showToast('Нет связи');
+  };
+  // tg.showConfirm работает корректно в Telegram Mini App (confirm() может блокироваться)
+  if (tg?.showConfirm) {
+    tg.showConfirm('Завершить заказ?\nКлиент получит уведомление.', (ok) => { if (ok) doClose(); });
+  } else {
+    if (window.confirm('Завершить заказ?')) doClose();
   }
 }
 
@@ -1681,15 +1689,22 @@ async function sendChatMessage() {
   if (isMgr && chatCustomerId) body.customer_id = chatCustomerId;
 
   try {
-    await fetch(`${API_URL}/api/send`, {
+    const resp = await fetch(`${API_URL}/api/send`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
       body:    JSON.stringify(body),
     });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      input.value = text;  // возвращаем текст если не отправилось
+      showToast(err.error === 'Rate limited' ? '⚠️ Слишком часто' : 'Ошибка отправки');
+      return;
+    }
     // Моментальный poll чтобы сообщение появилось без задержки
     setTimeout(pollChat, 150);
   } catch (_) {
-    showToast('Ошибка отправки');
+    input.value = text;  // возвращаем текст при сетевой ошибке
+    showToast('Нет связи');
   }
 }
 
