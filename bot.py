@@ -32,7 +32,6 @@ if _env_file.exists():
             os.environ.setdefault(_k.strip(), _v.strip())
 from telegram import (
     Update, WebAppInfo, KeyboardButton, ReplyKeyboardMarkup,
-    InlineKeyboardButton, InlineKeyboardMarkup,
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -76,7 +75,6 @@ PROMO_FAIL_WINDOW = 3600  # секунд (1 час) — окно подсчёт�
 MSG_RATE_LIMIT   = 5     # сообщений за MSG_RATE_WINDOW секунд
 MSG_RATE_WINDOW  = 60    # секунд
 MAX_MSG_LEN      = 1000  # максимальная длина сообщения клиента
-CONTACT_COOLDOWN = 30    # секунд между нажатиями «Связаться с менеджером»
 MAX_CUSTOMERS    = 500   # максимум записей в customer_chats
 
 # ── Каталог товаров (единственный источник цен — сервер) ─────
@@ -132,9 +130,6 @@ _bot_app = None
 # {user_id: {name, username, unread, last_msg, last_time}}
 customer_chats: dict[int, dict] = {}
 
-# Активный клиент для каждого менеджера: {manager_id: customer_id | None}
-manager_active_chats: dict[int, int | None] = {}
-
 # Время последнего заказа: {user_id: datetime}
 last_order_time: dict[int, datetime] = {}
 
@@ -146,8 +141,6 @@ promo_fail_log:   dict[int, list] = {}   # {user_id: [timestamp, ...]}
 
 # Счётчики сообщений клиентов: {user_id: [timestamp, ...]}
 msg_rate: dict[int, list] = {}
-# Время последнего нажатия «Связаться с менеджером»: {user_id: float}
-contact_last: dict[int, float] = {}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -563,41 +556,10 @@ def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton("🛍 Магазин", web_app=WebAppInfo(url=WEBAPP_URL))],
-            [KeyboardButton("💬 Связаться с менеджером")],
         ],
         resize_keyboard=True,
-        input_field_placeholder="Открой магазин или напиши нам...",
+        input_field_placeholder="Открой магазин...",
     )
-
-def panel_main_kb() -> InlineKeyboardMarkup:
-    rows = []
-    clients = sorted(
-        customer_chats.items(),
-        key=lambda x: x[1].get("unread", 0),
-        reverse=True,
-    )
-    for uid, info in clients:
-        unread = info.get("unread", 0)
-        badge  = f"  🔴 {unread}" if unread > 0 else ""
-        rows.append([InlineKeyboardButton(
-            f"👤 {info['name']}{badge}",
-            callback_data=f"chat_{uid}",
-        )])
-    if not rows:
-        rows.append([InlineKeyboardButton("🌊 Новых обращений нет", callback_data="noop")])
-    rows.append([InlineKeyboardButton("🔄 Обновить", callback_data="panel_refresh")])
-    return InlineKeyboardMarkup(rows)
-
-def panel_chat_kb(uid: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton("← Все чаты",    callback_data="panel_refresh"),
-        InlineKeyboardButton("✅ Закрыть чат", callback_data=f"close_{uid}"),
-    ]])
-
-def new_msg_kb(uid: int, name: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton(f"💬 Ответить {name}", callback_data=f"reply_{uid}"),
-    ]])
 
 
 # ══════════════════════════════════════════════════════════════
@@ -606,29 +568,6 @@ def new_msg_kb(uid: int, name: str) -> InlineKeyboardMarkup:
 
 def now_str() -> str:
     return datetime.now().strftime("%H:%M")
-
-def panel_text() -> str:
-    total  = len(customer_chats)
-    unread = sum(1 for v in customer_chats.values() if v.get("unread", 0) > 0)
-    return (
-        "👨‍💼 <b>Панель менеджера — Akva Store</b>\n\n"
-        f"📊 Всего чатов: <b>{total}</b>\n"
-        f"🔴 Непрочитанных: <b>{unread}</b>\n\n"
-        "Выберите клиента, чтобы ответить:"
-    )
-
-def chat_text(uid: int) -> str:
-    info = customer_chats.get(uid, {})
-    return (
-        f"💬 <b>Чат с {html.escape(info.get('name', 'Клиент'))}</b>\n"
-        f"📱 {html.escape(info.get('username', 'нет username'))} | <code>{uid}</code>\n\n"
-        f"🕐 Последнее сообщение в {info.get('last_time', '')}:\n"
-        f"<i>«{html.escape(info.get('last_msg', '—'))}»</i>\n\n"
-        "✏️ <b>Вы пишете этому клиенту.</b>\n"
-        "Отправьте текст — он получит ваш ответ.\n\n"
-        "<i>← Все чаты — вернуться к списку\n"
-        "✅ Закрыть чат — завершить диалог</i>"
-    )
 
 
 # ══════════════════════════════════════════════════════════════
@@ -704,7 +643,7 @@ async def api_send(request: web.Request) -> web.Response:
         customer_id = int(body.get('customer_id', 0))
         if not customer_id or customer_id not in customer_chats:
             return web.json_response({'error': 'customer_id required'}, status=400)
-        name = user.get('first_name', 'Менеджер')
+        name = 'Администратор Akva Store' if uid in ADMIN_IDS else 'Менеджер Akva Store'
         msg  = add_chat_message(customer_id, 'manager', text, name)
         if _bot_app:
             try:
@@ -749,8 +688,7 @@ async def api_send(request: web.Request) -> web.Response:
             )
             for mid in MANAGER_IDS | ADMIN_IDS:
                 try:
-                    await _bot_app.bot.send_message(chat_id=mid, text=mgr_text, parse_mode="HTML",
-                                                    reply_markup=new_msg_kb(customer_id, name))
+                    await _bot_app.bot.send_message(chat_id=mid, text=mgr_text, parse_mode="HTML")
                 except Exception as e:
                     logger.warning("notify mgr %s: %s", mid, e)
 
@@ -935,12 +873,10 @@ async def api_order(request: web.Request) -> web.Response:
             f"{total_html}\n"
             f"🕐 {now_str()}"
         )
-        fname = full_name.split()[0] if full_name else 'Клиент'
         for mid in MANAGER_IDS | ADMIN_IDS:
             try:
                 await _bot_app.bot.send_message(
                     chat_id=mid, text=order_text, parse_mode="HTML",
-                    reply_markup=new_msg_kb(uid, fname),
                 )
             except Exception as e:
                 logger.warning("order notify mgr %s: %s", mid, e)
@@ -965,47 +901,23 @@ def make_api_app() -> web.Application:
 # ══════════════════════════════════════════════════════════════
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    # Менеджеры и админ получают только клавиатуру без приветствия клиента
     if is_manager(update):
         role = "👑 Администратор" if is_admin(update) else "👨‍💼 Менеджер"
         await update.message.reply_text(
             f"{role} Akva Store\n\n"
-            "Ваши команды:\n"
-            "/panel — список клиентов\n"
-            "/write @username — написать клиенту\n"
-            "/clients — все клиенты" +
-            ("\n/promo — управление промокодами" if is_admin(update) else ""),
+            "Чат с клиентами — через приложение.\n" +
+            ("/promo — управление промокодами" if is_admin(update) else ""),
             parse_mode="HTML",
         )
         return
 
-    uid = update.effective_user.id
-    if uid in support_users:
-        support_users.discard(uid)
-        save_support_users()
     await update.message.reply_text(
         f"👋 Привет, <b>{update.effective_user.first_name}</b>!\n\n"
         "Добро пожаловать в <b>Akva Store</b> 🌊\n"
         "Вейп · Жидкости · Расходники · Нефтеюганск\n\n"
-        "Нажми <b>«🛍 Магазин»</b> — выбери товар и оформи заказ.\n"
-        "После заказа просто напиши адрес сюда — менеджер свяжется с тобой здесь же 💙",
+        "Нажми <b>«🛍 Магазин»</b> — выбери товар и оформи заказ 💙",
         reply_markup=main_keyboard(),
         parse_mode="HTML",
-    )
-
-
-async def btn_contact(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    if is_manager(update):
-        return
-    uid = update.effective_user.id
-    now = time.time()
-    if now - contact_last.get(uid, 0) < CONTACT_COOLDOWN:
-        return  # молчим, не спамим ответами
-    contact_last[uid] = now
-    support_users.add(uid)
-    save_support_users()
-    await update.message.reply_text(
-        "💬 Напиши свой вопрос — менеджер ответит здесь 👇",
     )
 
 
@@ -1115,8 +1027,7 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             mins, secs = remaining // 60, remaining % 60
             await update.message.reply_text(
                 f"⏳ <b>Подождите перед следующим заказом</b>\n\n"
-                f"Повторный заказ через <b>{mins} мин. {secs:02d} сек.</b>\n\n"
-                "Вопросы? → «💬 Связаться с менеджером»",
+                f"Повторный заказ через <b>{mins} мин. {secs:02d} сек.</b>",
                 parse_mode="HTML",
             )
             return
@@ -1265,21 +1176,8 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     save_customer_chats()
 
     await update.message.reply_text(
-        f"✅ <b>Заказ принят!</b>\n\n{lines}\n\n{total_msg}",
-        parse_mode="HTML",
-    )
-    await update.message.reply_text(
-        "📍 <b>Напиши адрес доставки</b> в формате:\n\n"
-        "<b>Микрорайон, дом, подъезд, квартира</b>\n\n"
-        "Пример: <i>16А мкр, д. 5, подъезд 2, кв. 47</i>",
-        parse_mode="HTML",
-    )
-    await update.message.reply_text(
-        "🚪 <b>Укажи способ получения:</b>\n\n"
-        "— оставить у двери\n"
-        "— выйду и заберу\n\n"
-        "📞 По желанию укажи номер телефона, чтобы курьер смог связаться с тобой, "
-        "если не будешь отвечать в Telegram.",
+        f"✅ <b>Заказ принят!</b>\n\n{lines}\n\n{total_msg}\n\n"
+        "💬 Откройте приложение — там можно написать менеджеру.",
         parse_mode="HTML",
     )
 
@@ -1305,188 +1203,9 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         f"{total_admin}\n"
         f"🕐 {now_str()}"
     )
-    await notify_managers(ctx, order_text, reply_markup=new_msg_kb(user.id, user.first_name))
+    await notify_managers(ctx, order_text)
 
 
-async def handle_customer_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """Сообщение клиента → пересылаем всем менеджерам."""
-    user = update.effective_user
-
-    if is_manager(update):
-        return
-    if user.id not in support_users:
-        return
-
-    text = update.message.text or "[медиа-сообщение]"
-
-    # Лимит длины сообщения
-    if len(text) > MAX_MSG_LEN:
-        await update.message.reply_text(
-            f"⚠️ Сообщение слишком длинное (максимум {MAX_MSG_LEN} символов)."
-        )
-        return
-
-    # Лимит частоты сообщений
-    if is_msg_rate_limited(user.id):
-        await update.message.reply_text("⏳ Не так быстро — подожди немного.")
-        return
-
-    username = f"@{user.username}" if user.username else "нет username"
-    t        = now_str()
-
-    # Ограничение памяти
-    if user.id not in customer_chats and len(customer_chats) >= MAX_CUSTOMERS:
-        logger.warning("MAX_CUSTOMERS reached, dropping msg from %s", user.id)
-        return
-
-    prev = customer_chats.get(user.id, {}).get("unread", 0)
-    customer_chats[user.id] = {
-        "name":      user.full_name,
-        "username":  username,
-        "unread":    prev + 1,
-        "last_msg":  text[:80],
-        "last_time": t,
-    }
-    save_customer_chats()
-    add_chat_message(user.id, 'customer', text, user.full_name)
-
-    safe_name     = html.escape(user.full_name)
-    safe_username = html.escape(username)
-    safe_text     = html.escape(text)
-
-    msg_text = (
-        f"📩 <b>Сообщение от клиента</b>\n\n"
-        f"👤 <a href='tg://user?id={user.id}'>{safe_name}</a>\n"
-        f"📱 {safe_username} | <code>{user.id}</code>\n\n"
-        f"✉️ {safe_text}\n\n"
-        f"🕐 {t}"
-    )
-    await notify_managers(ctx, msg_text, reply_markup=new_msg_kb(user.id, user.first_name))
-    await update.message.reply_text("✅ Сообщение отправлено менеджеру. Ожидайте ответа 💙")
-
-
-# ══════════════════════════════════════════════════════════════
-#   КОМАНДЫ МЕНЕДЖЕРА (panel, write, clients)
-# ══════════════════════════════════════════════════════════════
-
-async def cmd_panel(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """/panel — только для менеджеров и админа."""
-    if not is_manager(update):
-        return
-    await update.message.reply_text(panel_text(), reply_markup=panel_main_kb(), parse_mode="HTML")
-
-
-async def cmd_write(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """/write @username [текст] — только для менеджеров и админа."""
-    if not is_manager(update):
-        return
-
-    manager_id = update.effective_user.id
-    args = ctx.args
-
-    if not args:
-        await update.message.reply_text(
-            "📝 <b>Как писать клиенту:</b>\n\n"
-            "Выбрать клиента:\n<code>/write @username</code>\n\n"
-            "Сразу отправить сообщение:\n<code>/write @username Уточните адрес</code>\n\n"
-            "После выбора — просто пишите текст.",
-            parse_mode="HTML",
-        )
-        return
-
-    target       = args[0].lstrip("@").lower()
-    message_text = " ".join(args[1:]) if len(args) > 1 else None
-
-    found_uid = found_info = None
-    for uid, info in customer_chats.items():
-        if info.get("username", "").lstrip("@").lower() == target:
-            found_uid, found_info = uid, info
-            break
-
-    if not found_uid:
-        await update.message.reply_text(
-            f"❌ Клиент <b>@{target}</b> не найден.\n\n"
-            "Список клиентов: /clients",
-            parse_mode="HTML",
-        )
-        return
-
-    manager_active_chats[manager_id] = found_uid
-    if found_uid in customer_chats:
-        customer_chats[found_uid]["unread"] = 0
-
-    if message_text:
-        await ctx.bot.send_message(
-            chat_id=found_uid,
-            text=f"💬 <b>Сообщение от менеджера Akva Store:</b>\n\n{message_text}",
-            parse_mode="HTML",
-        )
-        await update.message.reply_text(
-            f"✅ Отправлено <b>{found_info['name']}</b> (@{target}). Продолжайте писать.",
-            parse_mode="HTML",
-        )
-    else:
-        await update.message.reply_text(
-            f"✏️ Вы пишете <b>{found_info['name']}</b> (@{target}).\n\n"
-            "Отправьте текст — клиент получит ответ.\n"
-            "<i>Сменить: /write @другой или /panel</i>",
-            parse_mode="HTML",
-        )
-
-
-async def cmd_clients(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """/clients — только для менеджеров и админа."""
-    if not is_manager(update):
-        return
-
-    if not customer_chats:
-        await update.message.reply_text("📋 Клиентов пока нет.")
-        return
-
-    lines = [
-        f"• <b>{info.get('name','—')}</b> {info.get('username','нет username')} "
-        f"| <code>{uid}</code>"
-        + (f" 🔴{info.get('unread',0)}" if info.get('unread',0) > 0 else "")
-        for uid, info in customer_chats.items()
-    ]
-    await update.message.reply_text(
-        f"📋 <b>Все клиенты ({len(lines)}):</b>\n\n" + "\n".join(lines) + "\n\n"
-        "<i>Написать: /write @username</i>",
-        parse_mode="HTML",
-    )
-
-
-async def handle_manager_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """Текст от менеджера → отправить его активному клиенту."""
-    if not is_manager(update):
-        return
-
-    manager_id = update.effective_user.id
-    uid = manager_active_chats.get(manager_id)
-
-    if not uid:
-        await update.message.reply_text(
-            "⚠️ Клиент не выбран.\n"
-            "Используйте /panel или кнопку «💬 Ответить» под сообщением.",
-        )
-        return
-
-    info = customer_chats.get(uid, {})
-    text = update.message.text
-
-    try:
-        await ctx.bot.send_message(
-            chat_id=uid,
-            text=f"💬 <b>Ответ от менеджера Akva Store:</b>\n\n{text}",
-            parse_mode="HTML",
-        )
-        add_chat_message(uid, 'manager', text, update.effective_user.first_name)
-        await update.message.reply_text(
-            f"✅ Доставлено <b>{info.get('name', uid)}</b>",
-            parse_mode="HTML",
-        )
-    except Exception as e:
-        await update.message.reply_text(f"❌ Не удалось доставить: {e}")
 
 
 async def handle_admin_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1551,70 +1270,8 @@ async def handle_admin_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """Инлайн-кнопки панели — только для менеджеров."""
-    query      = update.callback_query
-    manager_id = query.from_user.id
-
-    if manager_id not in MANAGER_IDS and manager_id not in ADMIN_IDS:
-        await query.answer("⛔ Доступ запрещён.")
-        return
-
-    await query.answer()
-    data = query.data
-
-    if data == "noop":
-        return
-
-    if data == "panel_refresh":
-        await query.edit_message_text(panel_text(), reply_markup=panel_main_kb(), parse_mode="HTML")
-
-    elif data.startswith("chat_"):
-        uid = int(data.split("_")[1])
-        manager_active_chats[manager_id] = uid
-        if uid in customer_chats:
-            customer_chats[uid]["unread"] = 0
-        await query.edit_message_text(chat_text(uid), reply_markup=panel_chat_kb(uid), parse_mode="HTML")
-
-    elif data.startswith("reply_"):
-        uid = int(data.split("_")[1])
-        manager_active_chats[manager_id] = uid
-        if uid in customer_chats:
-            customer_chats[uid]["unread"] = 0
-        info = customer_chats.get(uid, {})
-        try:
-            await query.edit_message_reply_markup(reply_markup=None)
-        except Exception:
-            pass
-        await ctx.bot.send_message(
-            chat_id=manager_id,
-            text=(
-                f"✏️ Вы пишете клиенту <b>{info.get('name', uid)}</b> "
-                f"({info.get('username', '')}).\n\n"
-                "Отправьте текст — клиент получит ответ.\n"
-                "<i>Сменить клиента: /panel</i>"
-            ),
-            parse_mode="HTML",
-        )
-
-    elif data.startswith("close_"):
-        uid = int(data.split("_")[1])
-        # Сбрасываем активный чат у всех менеджеров, у кого был этот клиент
-        for mid, cid in manager_active_chats.items():
-            if cid == uid:
-                manager_active_chats[mid] = None
-        name = customer_chats.pop(uid, {}).get("name", "Клиент")
-        try:
-            await ctx.bot.send_message(
-                chat_id=uid,
-                text="✅ Ваш вопрос закрыт менеджером.\nЕсли появятся вопросы — пишите! 💙",
-            )
-        except Exception:
-            pass
-        await query.edit_message_text(
-            f"✅ Чат с <b>{name}</b> закрыт.\n\n" + panel_text(),
-            reply_markup=panel_main_kb(),
-            parse_mode="HTML",
-        )
+    """Отвечает на устаревшие инлайн-кнопки старых сообщений."""
+    await update.callback_query.answer()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1735,15 +1392,9 @@ async def _run() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
     _bot_app = application
 
-    application.add_handler(CommandHandler("start",   cmd_start))
-    application.add_handler(CommandHandler("panel",   cmd_panel))
-    application.add_handler(CommandHandler("write",   cmd_write))
-    application.add_handler(CommandHandler("clients", cmd_clients))
-    application.add_handler(CommandHandler("promo",   cmd_promo))
+    application.add_handler(CommandHandler("start", cmd_start))
+    application.add_handler(CommandHandler("promo", cmd_promo))
 
-    application.add_handler(MessageHandler(
-        filters.Regex("💬 Связаться с менеджером"), btn_contact
-    ))
     application.add_handler(MessageHandler(
         filters.StatusUpdate.WEB_APP_DATA, handle_order
     ))
@@ -1752,16 +1403,6 @@ async def _run() -> None:
         handle_admin_photo,
     ))
     application.add_handler(CallbackQueryHandler(handle_callback))
-
-    all_manager_ids = list(MANAGER_IDS | ADMIN_IDS)
-    application.add_handler(MessageHandler(
-        filters.Chat(all_manager_ids) & filters.TEXT & ~filters.COMMAND,
-        handle_manager_text,
-    ))
-    application.add_handler(MessageHandler(
-        ~filters.Chat(all_manager_ids) & filters.TEXT & ~filters.COMMAND,
-        handle_customer_text,
-    ))
 
     logger.info("✅ Akva Store бот запущен | Админы: %s | Менеджеры: %s", ADMIN_IDS, MANAGER_IDS)
 

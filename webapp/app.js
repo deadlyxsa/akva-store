@@ -1412,20 +1412,14 @@ async function sendChatMessage() {
   const body  = { text };
   if (isMgr && chatCustomerId) body.customer_id = chatCustomerId;
 
-  // Оптимистичный рендер
-  renderMessages([{
-    role: isMgr ? 'manager' : 'customer',
-    text,
-    ts:   Date.now() / 1000,
-    name: tg?.initDataUnsafe?.user?.first_name || '',
-  }]);
-
   try {
     await fetch(`${API_URL}/api/send`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
       body:    JSON.stringify(body),
     });
+    // Моментальный poll чтобы сообщение появилось без задержки
+    setTimeout(pollChat, 150);
   } catch (_) {
     showToast('Ошибка отправки');
   }
