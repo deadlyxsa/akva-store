@@ -149,14 +149,6 @@ function tgInit() {
     // Редактор товаров и категорий — для всех менеджеров и админов
     const editBtn = document.getElementById('editProductsBtn');
     if (editBtn) editBtn.style.display = 'flex';
-    // Скрываем FAB чата для менеджеров (им не нужна CTA-кнопка)
-    const fab = document.getElementById('chatFab');
-    if (fab) fab.style.display = 'none';
-  }
-  if (uid && !MANAGER_IDS_CLIENT.includes(uid)) {
-    // Показываем FAB чата только клиентам
-    const fab = document.getElementById('chatFab');
-    if (fab) fab.style.display = 'flex';
   }
 }
 
@@ -911,9 +903,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('prodEditorClose')?.addEventListener('click', closeProductsEditor);
   document.getElementById('prodEditorOverlay')?.addEventListener('click', closeProductsEditor);
 
-  // Чат (заголовок + FAB)
+  // Чат
   document.getElementById('chatBtn')?.addEventListener('click', () => openChat());
-  document.getElementById('chatFab')?.addEventListener('click', () => openChat());
   document.getElementById('chatOverlay')?.addEventListener('click', closeChat);
   document.getElementById('chatClose')?.addEventListener('click', closeChat);
 

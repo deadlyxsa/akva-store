@@ -603,10 +603,9 @@ def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton("🛍 Магазин", web_app=WebAppInfo(url=WEBAPP_URL))],
-            [KeyboardButton("💬 Написать менеджеру", web_app=WebAppInfo(url=WEBAPP_URL + "?open=chat"))],
         ],
         resize_keyboard=True,
-        input_field_placeholder="Открой магазин или напиши нам...",
+        input_field_placeholder="Открой магазин и оформи заказ...",
     )
 
 
@@ -927,7 +926,7 @@ async def api_order(request: web.Request) -> web.Response:
         f"✅ Заказ принят!\n\n"
         f"📦 Состав:\n{lines}\n\n"
         f"{total_line}"
-        f"{form_lines if form_lines else chr(10)*2 + '📍 Напишите адрес доставки — менеджер свяжется с вами здесь.'}"
+        f"{form_lines if form_lines else chr(10)*2 + '📍 Напишите в чат: адрес доставки, оставить у двери или выйдете встречать, и контактный номер телефона.'}"
     )
     add_chat_message(uid, 'system', sys_msg, 'Akva Store')
 
@@ -1051,7 +1050,11 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         f"👋 Привет, <b>{update.effective_user.first_name}</b>!\n\n"
         "Добро пожаловать в <b>Akva Store</b> 🌊\n"
         "Вейп · Жидкости · Расходники · Нефтеюганск\n\n"
-        "Нажми <b>«🛍 Магазин»</b> — выбери товар и оформи заказ 💙",
+        "<b>Как сделать заказ:</b>\n"
+        "1️⃣ Нажми <b>«🛍 Магазин»</b>\n"
+        "2️⃣ Выбери товары и добавь в корзину\n"
+        "3️⃣ Оформи заказ — заполни анкету с данными\n"
+        "4️⃣ После оформления откроется <b>чат с менеджером</b> — напиши туда адрес и всё необходимое 💙",
         reply_markup=main_keyboard(),
         parse_mode="HTML",
     )
