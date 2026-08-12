@@ -1419,6 +1419,10 @@ function saveProduct(productId) {
 function openChat(preSelectedCustomerId = null) {
   if (!API_URL) { showToast('Чат временно недоступен'); return; }
 
+  // Закрываем корзину и анкету если открыты
+  closeCartModal();
+  closeOrderForm();
+
   const isMgr = isManagerUser();
   if (isMgr && !preSelectedCustomerId) {
     chatView = 'rooms';
