@@ -638,7 +638,7 @@ function startCooldownUI() {
     if (secs <= 0) {
       clearInterval(countdownTimer);
       btn.disabled = false;
-      btn.textContent = 'Оформить заказ 🚀';
+      btn.textContent = 'Продолжить оформление →';
       return;
     }
     const m = Math.floor(secs / 60), s = secs % 60;
@@ -654,7 +654,7 @@ function checkCooldownOnOpen() {
 // ──────────────────────────────────────────────────────────────
 //  ОТПРАВКА ЗАКАЗА
 // ──────────────────────────────────────────────────────────────
-async function submitOrder() {
+async function submitOrder(formData = {}) {
   const secs = getSecondsLeft();
   if (secs > 0) {
     const m = Math.floor(secs / 60), s = secs % 60;
@@ -676,14 +676,14 @@ async function submitOrder() {
 
   if (API_URL) {
     // Новый флоу: HTTP API → чат открывается автоматически
-    const btn = document.getElementById('confirmOrderBtn');
+    const btn = document.getElementById('orderFormSubmit') || document.getElementById('confirmOrderBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Оформляем...'; }
 
     try {
       const resp = await fetch(`${API_URL}/api/order`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
-        body:    JSON.stringify({ items, promo_code: promoCode }),
+        body:    JSON.stringify({ items, promo_code: promoCode, ...formData }),
       });
 
       if (resp.ok) {
@@ -714,11 +714,120 @@ async function submitOrder() {
   startCooldownUI();
 
   if (tg?.sendData) {
-    tg.sendData(JSON.stringify({ items, promo_code: promoCode }));
+    tg.sendData(JSON.stringify({ items, promo_code: promoCode, ...formData }));
   } else {
     const promoLine = promoCode ? `\nПромокод: ${promoCode}` : '';
     alert(`Заказ (тест):\n${items.map(i=>`ID${i.product_id} ${i.variant} x${i.qty}`).join('\n')}${promoLine}`);
   }
+}
+
+// ──────────────────────────────────────────────────────────────
+//  АНКЕТА ЗАКАЗА
+// ──────────────────────────────────────────────────────────────
+function openOrderForm() {
+  if (!Object.values(cart).some(x => x.qty > 0)) { showToast('Корзина пуста 🛒'); return; }
+  renderOrderForm();
+  document.getElementById('orderFormOverlay').classList.add('visible');
+  document.getElementById('orderFormModal').classList.add('visible');
+}
+
+function closeOrderForm() {
+  document.getElementById('orderFormOverlay').classList.remove('visible');
+  document.getElementById('orderFormModal').classList.remove('visible');
+}
+
+function renderOrderForm() {
+  const tgUser = tg?.initDataUnsafe?.user || {};
+  const prefillName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ');
+  const prefillUsername = tgUser.username ? `@${tgUser.username}` : '';
+
+  const cartItems = Object.values(cart).filter(x => x.qty > 0);
+  const orig  = calcOriginalTotal();
+  const final = calcTotal();
+  const summaryLines = cartItems.map(item => {
+    const p = PRODUCTS.find(q => q.id === item.productId);
+    if (!p) return '';
+    return `<div class="of-summary-line">
+      <span class="of-summary-name">${escHtml(p.name)} — ${escHtml(item.variant)}</span>
+      <span class="of-summary-price">${(p.price * item.qty).toLocaleString('ru-RU')} ₽ ×${item.qty}</span>
+    </div>`;
+  }).join('');
+
+  const totalHtml = (activePromo && orig !== final)
+    ? `<s>${orig.toLocaleString('ru-RU')} ₽</s> <b>${final.toLocaleString('ru-RU')} ₽</b>`
+    : `<b>${final.toLocaleString('ru-RU')} ₽</b>`;
+
+  const body = document.getElementById('orderFormBody');
+  body.innerHTML = `
+    <div class="of-summary">
+      <div class="of-summary-title">📦 Ваш заказ</div>
+      ${summaryLines}
+      <div class="of-summary-total">Итого: ${totalHtml}</div>
+    </div>
+
+    <div class="of-section">
+      <div class="of-section-title">Способ оплаты</div>
+      <label class="of-radio"><input type="radio" name="payment" value="Онлайн-переводом" checked /><span class="of-radio-dot"></span>Онлайн-переводом</label>
+      <label class="of-radio"><input type="radio" name="payment" value="Наличными курьеру" /><span class="of-radio-dot"></span>Наличными курьеру</label>
+    </div>
+
+    <div class="of-section">
+      <div class="of-section-title">Способ получения</div>
+      <label class="of-radio"><input type="radio" name="delivery" value="Доставка" checked /><span class="of-radio-dot"></span>Доставка</label>
+      <label class="of-radio"><input type="radio" name="delivery" value="Самовывоз" /><span class="of-radio-dot"></span>Самовывоз</label>
+    </div>
+
+    <div class="of-field">
+      <label class="of-label">Имя</label>
+      <input class="of-input" id="ofName" type="text" placeholder="Иван." value="${escHtml(prefillName)}" maxlength="80" />
+    </div>
+    <div class="of-field">
+      <label class="of-label">Телефон</label>
+      <input class="of-input" id="ofPhone" type="tel" placeholder="+79996661337" maxlength="30" />
+    </div>
+    <div class="of-field">
+      <label class="of-label">Юзернейм</label>
+      <input class="of-input" id="ofUsername" type="text" placeholder="@durov" value="${escHtml(prefillUsername)}" maxlength="50" />
+    </div>
+    <div class="of-field" id="ofAddressField">
+      <label class="of-label">Адрес доставки</label>
+      <input class="of-input" id="ofAddress" type="text" placeholder="14 мкр, 5 дом, 5 подъезд." maxlength="200" />
+    </div>
+    <div class="of-field">
+      <label class="of-label">Комментарий</label>
+      <textarea class="of-input of-textarea" id="ofComment" placeholder="Дополнительная информация..." maxlength="300"></textarea>
+    </div>
+    <div class="of-submit-row">
+      <button class="confirm-btn" id="orderFormSubmit">Оформить заказ 🚀</button>
+    </div>
+  `;
+
+  body.querySelectorAll('input[name="delivery"]').forEach(r => {
+    r.addEventListener('change', () => {
+      const af = document.getElementById('ofAddressField');
+      if (af) af.style.display = (r.value === 'Самовывоз' && r.checked) ? 'none' : '';
+    });
+  });
+
+  document.getElementById('orderFormSubmit')?.addEventListener('click', submitOrderForm);
+}
+
+async function submitOrderForm() {
+  const name     = document.getElementById('ofName')?.value.trim()    || '';
+  const phone    = document.getElementById('ofPhone')?.value.trim()   || '';
+  const username = document.getElementById('ofUsername')?.value.trim()|| '';
+  const address  = document.getElementById('ofAddress')?.value.trim() || '';
+  const comment  = document.getElementById('ofComment')?.value.trim() || '';
+  const payment  = document.querySelector('input[name="payment"]:checked')?.value  || '';
+  const delivery = document.querySelector('input[name="delivery"]:checked')?.value || '';
+
+  if (!name)  { showToast('⚠️ Введите имя'); return; }
+  if (!phone) { showToast('⚠️ Введите телефон'); return; }
+  if (delivery === 'Доставка' && !address) { showToast('⚠️ Введите адрес доставки'); return; }
+
+  closeOrderForm();
+  closeCartModal();
+  await submitOrder({ payment, delivery, form_name: name, phone, username_form: username, address, comment });
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -770,7 +879,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('cartModalClose')?.addEventListener('click', closeCartModal);
   document.getElementById('cartOverlay')?.addEventListener('click', closeCartModal);
-  document.getElementById('confirmOrderBtn')?.addEventListener('click', submitOrder);
+  document.getElementById('confirmOrderBtn')?.addEventListener('click', openOrderForm);
+  document.getElementById('orderFormClose')?.addEventListener('click', closeOrderForm);
+  document.getElementById('orderFormOverlay')?.addEventListener('click', closeOrderForm);
 
   // Промокод
   const promoInput = document.getElementById('promoInput');
@@ -1424,11 +1535,22 @@ function selectRoom(customerId, customerName) {
       stopChatPoll();
       chatView = 'rooms';
       btn.remove();
+      header.querySelector('#chatCloseOrderBtn')?.remove();
       renderRoomsView();
     });
     header.insertBefore(btn, title);
   }
   title.textContent = `💬 ${customerName}`;
+
+  // Кнопка завершения заказа для менеджера
+  header.querySelector('#chatCloseOrderBtn')?.remove();
+  const closeOrderBtn = document.createElement('button');
+  closeOrderBtn.id        = 'chatCloseOrderBtn';
+  closeOrderBtn.className = 'chat-close-order-btn';
+  closeOrderBtn.textContent = '✅ Завершить';
+  closeOrderBtn.addEventListener('click', () => closeOrder(customerId));
+  const chatCloseBtn = document.getElementById('chatClose');
+  header.insertBefore(closeOrderBtn, chatCloseBtn);
 
   renderChatView();
   startChatPoll();
@@ -1480,6 +1602,29 @@ async function pollChat() {
       indicator.classList.toggle('visible', !!showTyping);
     }
   } catch (_) {}
+}
+
+async function closeOrder(customerId) {
+  if (!confirm('Завершить заказ? Клиент получит уведомление.')) return;
+  try {
+    const resp = await fetch(`${API_URL}/api/close_chat`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
+      body:    JSON.stringify({ customer_id: customerId }),
+    });
+    if (resp.ok) {
+      showToast('✅ Заказ завершён');
+      stopChatPoll();
+      chatView = 'rooms';
+      document.getElementById('chatHeader')?.querySelector('#chatBackBtn')?.remove();
+      document.getElementById('chatHeader')?.querySelector('#chatCloseOrderBtn')?.remove();
+      renderRoomsView();
+    } else {
+      showToast('Ошибка');
+    }
+  } catch (_) {
+    showToast('Нет связи');
+  }
 }
 
 function renderMessages(messages) {

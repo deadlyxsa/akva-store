@@ -825,6 +825,14 @@ async def api_order(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({'error': 'Invalid JSON'}, status=400)
 
+    # Данные из анкеты
+    payment      = str(data.get('payment',   '')).strip()[:50]
+    delivery     = str(data.get('delivery',  '')).strip()[:50]
+    form_name    = str(data.get('form_name', '')).strip()[:80]
+    form_phone   = str(data.get('phone',     '')).strip()[:30]
+    form_addr    = str(data.get('address',   '')).strip()[:200]
+    form_comment = str(data.get('comment',   '')).strip()[:300]
+
     items_raw = data.get('items', [])
     if not isinstance(items_raw, list) or not items_raw:
         return web.json_response({'error': 'Empty cart'}, status=400)
@@ -907,9 +915,19 @@ async def api_order(request: web.Request) -> web.Response:
     else:
         total_line = f"Итого: {final_total} ₽"
 
+    form_lines = ''
+    if payment:       form_lines += f"\n💳 Оплата: {payment}"
+    if delivery:      form_lines += f"\n🚚 Доставка: {delivery}"
+    if form_name:     form_lines += f"\n👤 Имя: {form_name}"
+    if form_phone:    form_lines += f"\n📞 Телефон: {form_phone}"
+    if form_addr:     form_lines += f"\n📍 Адрес: {form_addr}"
+    if form_comment:  form_lines += f"\n💬 {form_comment}"
+
     sys_msg = (
-        f"✅ Заказ принят!\n\n{lines}\n\n{total_line}\n\n"
-        "📍 Напишите адрес доставки — менеджер свяжется с вами здесь."
+        f"✅ Заказ принят!\n\n"
+        f"📦 Состав:\n{lines}\n\n"
+        f"{total_line}"
+        f"{form_lines if form_lines else chr(10)*2 + '📍 Напишите адрес доставки — менеджер свяжется с вами здесь.'}"
     )
     add_chat_message(uid, 'system', sys_msg, 'Akva Store')
 
@@ -926,10 +944,19 @@ async def api_order(request: web.Request) -> web.Response:
             if discount_pct else
             f"💰 <b>Итого: {final_total} ₽</b>"
         )
+        form_html = ''
+        if payment:       form_html += f"\n💳 Оплата: <b>{html.escape(payment)}</b>"
+        if delivery:      form_html += f"\n🚚 Доставка: <b>{html.escape(delivery)}</b>"
+        if form_name:     form_html += f"\n👤 Имя: {html.escape(form_name)}"
+        if form_phone:    form_html += f"\n📞 Телефон: <code>{html.escape(form_phone)}</code>"
+        if form_addr:     form_html += f"\n📍 Адрес: {html.escape(form_addr)}"
+        if form_comment:  form_html += f"\n💬 {html.escape(form_comment)}"
+
         order_text = (
             f"🛒 <b>Новый заказ (чат)!</b>\n\n"
             f"👤 <a href='tg://user?id={uid}'>{safe_name}</a>\n"
-            f"📱 {safe_uname} | <code>{uid}</code>\n\n"
+            f"📱 {safe_uname} | <code>{uid}</code>"
+            f"{form_html}\n\n"
             f"📦 <b>Состав:</b>\n{lines_html}\n"
             f"{chr(10) + promo_note if promo_note else ''}\n"
             f"{total_html}\n"
@@ -954,6 +981,44 @@ async def api_order(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'total': final_total,
                               'original_total': original_total, 'discount_pct': discount_pct})
 
+async def api_close_chat(request: web.Request) -> web.Response:
+    """Менеджер завершает заказ — убирает чат из активных."""
+    user = verify_init_data(request.headers.get('X-Init-Data', ''))
+    if not user:
+        return web.json_response({'error': 'Unauthorized'}, status=401)
+    uid = int(user.get('id', 0))
+    if uid not in MANAGER_IDS and uid not in ADMIN_IDS:
+        return web.json_response({'error': 'Forbidden'}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({'error': 'Invalid JSON'}, status=400)
+    customer_id = body.get('customer_id')
+    if not isinstance(customer_id, int):
+        return web.json_response({'error': 'customer_id required'}, status=400)
+
+    # Финальное сообщение в чат (клиент увидит при следующем открытии)
+    add_chat_message(
+        customer_id, 'system',
+        '✅ Заказ завершён! Спасибо за покупку в Akva Store 🌊\n\nЕсли понадобится снова — мы всегда здесь.',
+        'Akva Store',
+    )
+    # Убираем из активных чатов (список менеджера)
+    customer_chats.pop(customer_id, None)
+    save_customer_chats()
+    # Уведомление клиенту в Telegram
+    if _bot_app:
+        try:
+            await _bot_app.bot.send_message(
+                chat_id=customer_id,
+                text='✅ <b>Ваш заказ выполнен!</b>\n\nСпасибо за покупку в <b>Akva Store</b> 🌊\n\nЕсли понадобится снова — мы всегда рады!',
+                parse_mode='HTML',
+            )
+        except Exception as e:
+            logger.warning('close_chat notify %s: %s', customer_id, e)
+    return web.json_response({'ok': True})
+
+
 def make_api_app() -> web.Application:
     api = web.Application(middlewares=[cors_middleware])
     api.router.add_route('OPTIONS', '/{path_info:.*}', _handle_options)
@@ -961,8 +1026,9 @@ def make_api_app() -> web.Application:
     api.router.add_post('/api/send',  api_send)
     api.router.add_post('/api/typing', api_typing)
     api.router.add_get('/api/rooms',  api_rooms)
-    api.router.add_post('/api/order', api_order)
-    api.router.add_get('/health',     lambda r: web.Response(text='ok'))
+    api.router.add_post('/api/order',      api_order)
+    api.router.add_post('/api/close_chat', api_close_chat)
+    api.router.add_get('/health',          lambda r: web.Response(text='ok'))
     return api
 
 

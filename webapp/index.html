@@ -9,7 +9,7 @@
   <title>Akva Store</title>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="style.css?v=23" />
+  <link rel="stylesheet" href="style.css?v=24" />
 </head>
 <body>
 
@@ -147,7 +147,7 @@
       </div>
     </div>
 
-    <button class="confirm-btn" id="confirmOrderBtn">Оформить заказ 🚀</button>
+    <button class="confirm-btn" id="confirmOrderBtn">Продолжить оформление →</button>
   </div>
 </div>
 
@@ -184,12 +184,23 @@
   <img class="lightbox-img" id="lightboxImg" alt="" />
 </div>
 
+<!-- АНКЕТА ЗАКАЗА -->
+<div class="avail-overlay" id="orderFormOverlay"></div>
+<div class="avail-modal order-form-modal" id="orderFormModal" role="dialog" aria-label="Оформление заказа">
+  <div class="avail-modal-handle"></div>
+  <div class="avail-modal-header">
+    <h2 class="avail-modal-title">📋 Оформление заказа</h2>
+    <button class="cart-modal-close" id="orderFormClose">✕</button>
+  </div>
+  <div class="order-form-body" id="orderFormBody"></div>
+</div>
+
 <!-- FAB ЧАТА ДЛЯ КЛИЕНТОВ -->
 <button class="chat-fab" id="chatFab" aria-label="Написать менеджеру" style="display:none">
   <span class="chat-fab-icon">💬</span>
   <span class="chat-fab-label">Написать менеджеру</span>
 </button>
 
-<script src="app.js?v=27"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>
