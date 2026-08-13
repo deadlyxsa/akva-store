@@ -215,14 +215,18 @@ function tgInit() {
 // ──────────────────────────────────────────────────────────────
 function renderCategories() {
   const container = document.getElementById('categories');
-  container.innerHTML = CATEGORIES.map(cat => `
-    <button class="cat-btn${cat.id === activeCategory ? ' active' : ''}" data-cat="${cat.id}">
+  container.innerHTML = CATEGORIES.map(cat => {
+    const size = Number(cat.imgSize);
+    const sizeStyle = (Number.isFinite(size) && size > 0) ? ` style="width:${size}px;height:${size}px"` : '';
+    return `
+    <button class="cat-btn${cat.id === activeCategory ? ' active' : ''}" data-cat="${escHtml(cat.id)}">
       ${cat.img
-        ? `<img src="${cat.img}" class="cat-icon-img" alt="${cat.label}" draggable="false"${cat.imgSize ? ` style="width:${cat.imgSize}px;height:${cat.imgSize}px"` : ''} />`
-        : `<span class="icon">${cat.icon}</span>`}
-      <span class="label">${cat.label}</span>
+        ? `<img src="${escHtml(cat.img)}" class="cat-icon-img" alt="${escHtml(cat.label)}" draggable="false"${sizeStyle} />`
+        : `<span class="icon">${escHtml(cat.icon)}</span>`}
+      <span class="label">${escHtml(cat.label)}</span>
     </button>
-  `).join('');
+  `;
+  }).join('');
   container.querySelectorAll('.cat-btn').forEach(btn =>
     btn.addEventListener('click', () => setCategory(btn.dataset.cat))
   );
@@ -341,10 +345,10 @@ function renderProducts() {
 function buildCard(p) {
   const totalQty = getProductQty(p.id);
   const badgeHtml = p.badge
-    ? `<span class="card-badge ${badgeClass(p.badge)}">${p.badge}</span>` : '';
+    ? `<span class="card-badge ${badgeClass(p.badge)}">${escHtml(p.badge)}</span>` : '';
 
   const imageHtml = p.image
-    ? `<img src="${p.image}" alt="${p.name}" class="card-img" loading="lazy" />`
+    ? `<img src="${escHtml(p.image)}" alt="${escHtml(p.name)}" class="card-img" loading="lazy" />`
     : `<span class="product-emoji">${p.emoji}</span>`;
 
   const bgStyle = p.image
@@ -358,8 +362,8 @@ function buildCard(p) {
     const cls = avail
       ? (qty > 0 ? ' chip-active' : '')
       : ' chip-unavailable';
-    return `<button class="card-chip${cls}" data-id="${p.id}" data-variant="${v}"${!avail ? ' disabled' : ''}>
-      ${avail ? '' : '<span class="chip-x">✕</span>'}${v}${qty > 0 ? `<span class="chip-qty">${qty}</span>` : ''}
+    return `<button class="card-chip${cls}" data-id="${p.id}" data-variant="${escHtml(v)}"${!avail ? ' disabled' : ''}>
+      ${avail ? '' : '<span class="chip-x">✕</span>'}${escHtml(v)}${qty > 0 ? `<span class="chip-qty">${qty}</span>` : ''}
     </button>`;
   }).join('');
 
@@ -371,7 +375,7 @@ function buildCard(p) {
     : `<span class="card-price">${p.price.toLocaleString('ru-RU')} ₽</span>`;
 
   const imgAttr = p.image
-    ? ` data-img="${p.image}" data-name="${p.name}" class="card-image card-image--clickable"`
+    ? ` data-img="${escHtml(p.image)}" data-name="${escHtml(p.name)}" class="card-image card-image--clickable"`
     : ` class="card-image"`;
 
   return `
@@ -382,8 +386,8 @@ function buildCard(p) {
         ${imageHtml}
       </div>
       <div class="card-body">
-        <div class="card-name">${p.name}</div>
-        ${p.strength ? `<div class="card-strength">${p.strength}</div>` : ''}
+        <div class="card-name">${escHtml(p.name)}</div>
+        ${p.strength ? `<div class="card-strength">${escHtml(p.strength)}</div>` : ''}
         ${p.description ? `<div class="card-desc">${escHtml(p.description)}</div>` : ''}
         <div class="card-price-row">${priceHtml}</div>
         <div class="card-chips-row" id="chips-${p.id}">${chipsHtml}</div>
@@ -609,7 +613,7 @@ function renderCartModal() {
   const getItemIcon = id => {
     const p = PRODUCTS.find(x => x.id === id);
     if (!p) return '📦';
-    if (p.image) return `<img src="${p.image}" class="ci-icon-img" alt="" loading="lazy" />`;
+    if (p.image) return `<img src="${escHtml(p.image)}" class="ci-icon-img" alt="" loading="lazy" />`;
     return p.emoji ?? '📦';
   };
 
@@ -626,14 +630,14 @@ function renderCartModal() {
     <div class="cart-item">
       <div class="ci-icon" style="background:${getGradient(item.productId)}">${getItemIcon(item.productId)}</div>
       <div class="ci-info">
-        <div class="ci-name">${item.name}</div>
-        <div class="ci-sub">${item.variant}</div>
+        <div class="ci-name">${escHtml(item.name)}</div>
+        <div class="ci-sub">${escHtml(item.variant)}</div>
         <div class="ci-price-row">${priceHtml}</div>
       </div>
       <div class="ci-stepper">
-        <button data-action="dec" data-key="${key}">−</button>
+        <button data-action="dec" data-key="${escHtml(key)}">−</button>
         <span class="ci-qty">${item.qty}</span>
-        <button data-action="inc" data-key="${key}">+</button>
+        <button data-action="inc" data-key="${escHtml(key)}">+</button>
       </div>
     </div>`;
   }).join('') + `<button class="clear-cart-btn" id="clearCartBtn">🗑 Очистить корзину</button>`;
@@ -1041,15 +1045,15 @@ function renderAvailBody() {
   if (!body) return;
   body.innerHTML = PRODUCTS.map(p => `
     <div class="avail-product">
-      <div class="avail-product-name">${p.emoji} ${p.name}</div>
+      <div class="avail-product-name">${p.emoji} ${escHtml(p.name)}</div>
       <div class="avail-variants">
         ${p.variants.map(v => {
           const key = `${p.id}:${v}`;
           const on = availDraft[key] !== false;
           return `
-            <div class="avail-row" data-key="${key}">
-              <span class="avail-variant-name">${v}</span>
-              <button class="avail-toggle ${on ? 'avail-on' : 'avail-off'}" data-key="${key}">
+            <div class="avail-row" data-key="${escHtml(key)}">
+              <span class="avail-variant-name">${escHtml(v)}</span>
+              <button class="avail-toggle ${on ? 'avail-on' : 'avail-off'}" data-key="${escHtml(key)}">
                 ${on ? '✅ Есть' : '❌ Нет'}
               </button>
             </div>`;
@@ -1219,7 +1223,7 @@ function renderCategoriesEditor() {
       ${CATEGORIES.map((c, i) => `
         <div class="prod-list-item" id="cat-row-${i}">
           <div class="cat-list-icon" id="cat-icon-${i}" style="cursor:pointer;position:relative" title="Нажми чтобы сменить фото">
-            ${c.img ? `<img src="${c.img}" style="width:36px;height:36px;object-fit:contain;border-radius:6px" />` : `<span style="font-size:24px">${c.icon || '📦'}</span>`}
+            ${c.img ? `<img src="${escHtml(c.img)}" style="width:36px;height:36px;object-fit:contain;border-radius:6px" />` : `<span style="font-size:24px">${escHtml(c.icon || '📦')}</span>`}
             <span style="position:absolute;bottom:-2px;right:-4px;font-size:10px">📷</span>
           </div>
           <input type="file" accept="image/*" id="cat-img-file-${i}" style="display:none" data-index="${i}" />
@@ -1496,12 +1500,12 @@ function renderTeamEditor() {
     </div>
     <div class="prod-edit-body">
       <label class="prod-field-label">👑 Администраторы (товары, категории, настройки, промокоды)</label>
-      <div class="prod-list" id="teamAdminList">
+      <div class="prod-list" id="teamAdminList" style="flex:none;overflow:visible">
         ${OWNER_ADMIN_IDS_CLIENT.map(id => lockedRowHtml(id, 'Владелец')).join('')}
         ${TEAM_DATA.extra_admins.map(a => rowHtml(a, 'admin')).join('')}
       </div>
       <label class="prod-field-label" style="margin-top:14px">👨‍💼 Менеджеры (чат с клиентами, товары, наличие)</label>
-      <div class="prod-list" id="teamManagerList">
+      <div class="prod-list" id="teamManagerList" style="flex:none;overflow:visible">
         ${OWNER_MANAGER_IDS_CLIENT.map(id => lockedRowHtml(id, 'Основной менеджер')).join('')}
         ${TEAM_DATA.extra_managers.map(m => rowHtml(m, 'manager')).join('')}
       </div>
@@ -1580,7 +1584,7 @@ async function saveTeam() {
 
 function renderProductRow(p) {
   const imgHtml = p.image
-    ? `<img src="${p.image}" class="prod-list-thumb" alt="" />`
+    ? `<img src="${escHtml(p.image)}" class="prod-list-thumb" alt="" />`
     : `<div class="prod-list-thumb prod-list-thumb--emoji">${p.emoji || '📦'}</div>`;
   const catLabel = CATEGORIES.find(c => c.id === p.category)?.label || (p.category || '');
   return `
@@ -1588,7 +1592,7 @@ function renderProductRow(p) {
       ${imgHtml}
       <div class="prod-list-info">
         <div class="prod-list-name">${escHtml(p.name)}</div>
-        <div class="prod-list-meta">${p.price.toLocaleString('ru-RU')} ₽ · ${catLabel} · ${p.variants.length} вар.</div>
+        <div class="prod-list-meta">${p.price.toLocaleString('ru-RU')} ₽ · ${escHtml(catLabel)} · ${p.variants.length} вар.</div>
       </div>
       <div class="prod-list-actions">
         <button class="prod-edit-btn" data-id="${p.id}" title="Изменить">✏️</button>
@@ -1670,10 +1674,10 @@ function openProductEdit(productId) {
 function renderEditForm(p, isNew) {
   const modal = document.getElementById('prodEditorModal');
   const catOptions = CATEGORIES.map(c =>
-    `<option value="${c.id}"${p.category === c.id ? ' selected' : ''}>${c.label}</option>`
+    `<option value="${escHtml(c.id)}"${p.category === c.id ? ' selected' : ''}>${escHtml(c.label)}</option>`
   ).join('');
   const imgPreview = p.image
-    ? `<img src="${p.image}" class="prod-img-preview" alt="" id="prodImgPreview" />`
+    ? `<img src="${escHtml(p.image)}" class="prod-img-preview" alt="" id="prodImgPreview" />`
     : `<div class="prod-img-preview prod-img-placeholder" id="prodImgPreview">${p.emoji || '📦'}</div>`;
 
   modal.innerHTML = `

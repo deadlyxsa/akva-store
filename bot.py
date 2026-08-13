@@ -45,7 +45,10 @@ from telegram.ext import (
 #   КОНФИГУРАЦИЯ
 # ══════════════════════════════════════════════════════════════
 
-BOT_TOKEN  = "8854996706:AAE3lTBiDNCXGcLxCmiybQZJGPFklScGT68"
+# BOT_TOKEN — ТОЛЬКО через переменную окружения (.env локально / Railway Variables).
+# Этот файл лежит в публичном GitHub-репозитории — хардкодить сюда токен нельзя,
+# его мгновенно вычитают автоматические сканеры секретов.
+BOT_TOKEN  = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = "https://deadlyxsa.github.io/akva-store/webapp/"
 
 # ── GitHub API (для обновления availability.json на GitHub Pages) ─
@@ -522,6 +525,8 @@ def add_chat_message(customer_id: int, role: str, text: str, name: str = '') -> 
     save_chat_messages()
     return msg
 
+INIT_DATA_MAX_AGE = 86400  # секунд — защита от replay старой утёкшей initData
+
 def verify_init_data(raw: str) -> dict | None:
     """Проверяет Telegram WebApp initData. Возвращает user dict или None."""
     try:
@@ -535,6 +540,9 @@ def verify_init_data(raw: str) -> dict | None:
         secret    = hmac.new(b'WebAppData', BOT_TOKEN.encode(), hashlib.sha256).digest()
         computed  = hmac.new(secret, check_str.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(computed, recv_hash):
+            return None
+        auth_date = int(params.get('auth_date', 0))
+        if auth_date <= 0 or (time.time() - auth_date) > INIT_DATA_MAX_AGE:
             return None
         return json.loads(params.get('user', '{}'))
     except Exception as e:
@@ -991,7 +999,7 @@ async def api_order(request: web.Request) -> web.Response:
                 promo_usage[promo_code] = promo_usage.get(promo_code, 0) + 1
                 record_user_promo(uid, promo_code)
                 save_promo_usage()
-                promo_note = f"🏷 {promo_code} · -{discount_pct}%"
+                promo_note = f"🏷 {html.escape(promo_code)} · -{discount_pct}%"
             else:
                 record_promo_failure(uid)
 
@@ -1598,30 +1606,32 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
         info = promo_codes.get(promo_code)
 
+        promo_code_safe = html.escape(promo_code)
+
         if not info:
             record_promo_failure(user.id)
             logger.warning("SECURITY invalid promo '%s' from %s", promo_code, user.id)
             await update.message.reply_text(
-                f"⚠️ Промокод <b>{promo_code}</b> не найден.\nЗаказ оформлен без скидки.",
+                f"⚠️ Промокод <b>{promo_code_safe}</b> не найден.\nЗаказ оформлен без скидки.",
                 parse_mode="HTML",
             )
-            promo_note = f"❌ Неверный промокод: {promo_code}"
+            promo_note = f"❌ Неверный промокод: {promo_code_safe}"
 
         elif promo_usage.get(promo_code, 0) >= info['max_uses']:
             await update.message.reply_text(
-                f"⚠️ Промокод <b>{promo_code}</b> исчерпан.\nЗаказ оформлен без скидки.",
+                f"⚠️ Промокод <b>{promo_code_safe}</b> исчерпан.\nЗаказ оформлен без скидки.",
                 parse_mode="HTML",
             )
-            promo_note = f"⚠️ Промокод {promo_code} исчерпан"
+            promo_note = f"⚠️ Промокод {promo_code_safe} исчерпан"
 
         elif user_already_used_promo(user.id, promo_code):
             logger.warning("SECURITY repeated promo '%s' by %s", promo_code, user.id)
             await update.message.reply_text(
-                f"⚠️ Вы уже использовали <b>{promo_code}</b>.\n"
+                f"⚠️ Вы уже использовали <b>{promo_code_safe}</b>.\n"
                 "Каждый промокод — один раз. Заказ без скидки.",
                 parse_mode="HTML",
             )
-            promo_note = f"⚠️ Повторное использование {promo_code} от {user.id}"
+            promo_note = f"⚠️ Повторное использование {promo_code_safe} от {user.id}"
 
         else:
             discount_pct = info['discount']
@@ -1630,7 +1640,7 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             save_promo_usage()
             used = promo_usage[promo_code]
             left = info['max_uses'] - used
-            promo_note = f"🏷 {promo_code} · -{discount_pct}%"
+            promo_note = f"🏷 {promo_code_safe} · -{discount_pct}%"
             promo_line = f"{promo_note} | использован {used}/{info['max_uses']}, осталось {left}"
 
     final_total = round(original_total * (1 - discount_pct / 100))
@@ -2082,6 +2092,11 @@ async def _run() -> None:
 
 
 def main() -> None:
+    if not BOT_TOKEN:
+        raise SystemExit(
+            "BOT_TOKEN не задан. Добавь его в .env (локально) или в "
+            "Railway → Variables (в проде) — например BOT_TOKEN=123456:AA..."
+        )
     load_promo_usage()
     load_promo_user_usage()
     load_order_cooldowns()
