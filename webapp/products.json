@@ -9,7 +9,12 @@
     "category": "liquids",
     "variantLabel": "Вкус",
     "image": "images/isterika x самоубийца v.2.jpg",
-    "variants": ["Адреналин раш с лесными ягодами", "Вишня энергетик", "Кислый Скиттлс", "Малиновый энергетик"]
+    "variants": [
+      "Адреналин раш с лесными ягодами",
+      "Вишня энергетик",
+      "Кислый Скиттлс",
+      "Малиновый энергетик"
+    ]
   },
   {
     "id": 2,
@@ -21,7 +26,10 @@
     "category": "liquids",
     "variantLabel": "Вкус",
     "image": "images/Isterika Classic Salt.jpg",
-    "variants": ["Зелёный Бёрн", "Кола чупа чупс"]
+    "variants": [
+      "Зелёный Бёрн",
+      "Кола чупа чупс"
+    ]
   },
   {
     "id": 3,
@@ -33,7 +41,12 @@
     "category": "liquids",
     "variantLabel": "Вкус",
     "image": "images/Monster Hardcore.jpg",
-    "variants": ["Земляничный Коктейл", "Клубничный Коктейл", "Малиновый Коктейль", "Скитлс Коктейль"]
+    "variants": [
+      "Земляничный Коктейл",
+      "Клубничный Коктейл",
+      "Малиновый Коктейль",
+      "Скитлс Коктейль"
+    ]
   },
   {
     "id": 4,
@@ -45,7 +58,14 @@
     "category": "liquids",
     "variantLabel": "Вкус",
     "image": "images/Monster Sourline.jpg",
-    "variants": ["Вишнёвый Энергетик", "Киви и Лайм", "Кислотный Скитлс", "Клубника и Лимон", "Малина и Личи", "Мармеладная Шипучка"]
+    "variants": [
+      "Вишнёвый Энергетик",
+      "Киви и Лайм",
+      "Кислотный Скитлс",
+      "Клубника и Лимон",
+      "Малина и Личи",
+      "Мармеладная Шипучка"
+    ]
   },
   {
     "id": 5,
@@ -57,7 +77,15 @@
     "category": "liquids",
     "variantLabel": "Вкус",
     "image": "images/убивашка.pnb.PNG",
-    "variants": ["Виноградная Фанта", "Вишнёвый Лимонад", "Кислая Вишня Ред Булл Смородина", "Кислый Земляничный Чупа Чупс", "Ред Булл", "Энергетик Классический", "Ягодный Взрыв"]
+    "variants": [
+      "Виноградная Фанта",
+      "Вишнёвый Лимонад",
+      "Кислая Вишня Ред Булл Смородина",
+      "Кислый Земляничный Чупа Чупс",
+      "Ред Булл",
+      "Энергетик Классический",
+      "Ягодный Взрыв"
+    ]
   },
   {
     "id": 6,
@@ -69,7 +97,9 @@
     "category": "pods",
     "variantLabel": "Цвет",
     "image": "images/Vaporesso Xros 6 mini.jpg",
-    "variants": ["Plume Pink"]
+    "variants": [
+      "Plume Pink"
+    ]
   },
   {
     "id": 7,
@@ -81,7 +111,9 @@
     "category": "pods",
     "variantLabel": "Цвет",
     "image": "images/Thelema Elite S.jpg",
-    "variants": ["Twill Silver"]
+    "variants": [
+      "Twill Silver"
+    ]
   },
   {
     "id": 8,
@@ -93,7 +125,9 @@
     "category": "accessories",
     "variantLabel": "Вариант",
     "image": "images/Losv Vape E-Plus.jpg",
-    "variants": ["0.6 Ом"]
+    "variants": [
+      "0.6 Ом"
+    ]
   },
   {
     "id": 9,
@@ -105,7 +139,9 @@
     "category": "accessories",
     "variantLabel": "Вариант",
     "image": "images/Испаритель к5.jpg",
-    "variants": ["0.15 Ом"]
+    "variants": [
+      "0.15 Ом"
+    ]
   },
   {
     "id": 10,
@@ -116,7 +152,10 @@
     "description": "",
     "category": "accessories",
     "variantLabel": "Объём",
-    "image": "images/картридж хрос.png",
-    "variants": ["2 мл", "3 мл"]
+    "image": "images/1786585738384_IMG_1545.jpeg",
+    "variants": [
+      "2 мл",
+      "3 мл"
+    ]
   }
 ]
