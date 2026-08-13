@@ -1176,7 +1176,9 @@ async def api_admin_products(request: web.Request) -> web.Response:
 
     # Обработка загрузки изображения товара
     img_info = body.get('image')
+    image_ok = None  # None = картинка не отправлялась
     if img_info and isinstance(img_info, dict):
+        image_ok = False
         try:
             pid_img  = img_info.get('productId')
             filename = str(img_info.get('filename', 'product.jpg')).replace('/', '_')[:80]
@@ -1185,6 +1187,7 @@ async def api_admin_products(request: web.Request) -> web.Response:
                 img_bytes = base64.b64decode(b64str)
                 img_path  = f"webapp/images/{filename}"
                 if push_image_github(img_bytes, img_path):
+                    image_ok = True
                     for p in data:
                         if str(p.get('id')) == str(pid_img):
                             p['image'] = f"images/{filename}"
@@ -1205,7 +1208,9 @@ async def api_admin_products(request: web.Request) -> web.Response:
 
     save_products_local(data)
     ok = push_products_github(data)
-    return web.json_response({'ok': True, 'github': ok})
+    if not ok:
+        logger.warning("push_products_github FAILED — проверьте GITHUB_TOKEN")
+    return web.json_response({'ok': True, 'github': ok, 'image_ok': image_ok})
 
 
 async def api_admin_categories(request: web.Request) -> web.Response:
@@ -1224,9 +1229,11 @@ async def api_admin_categories(request: web.Request) -> web.Response:
         return web.json_response({'error': 'Invalid data'}, status=400)
 
     # Обработка загрузок изображений для категорий
+    image_ok = None
     for cat in cats:
         pending = cat.pop('pendingImage', None)
         if pending and isinstance(pending, dict):
+            image_ok = False
             try:
                 filename = str(pending.get('filename', 'cat.jpg')).replace('/', '_')[:80]
                 b64str   = pending.get('b64', '')
@@ -1234,13 +1241,16 @@ async def api_admin_categories(request: web.Request) -> web.Response:
                     img_bytes = base64.b64decode(b64str)
                     img_path  = f"webapp/images/{filename}"
                     if push_image_github(img_bytes, img_path):
+                        image_ok = True
                         cat['img'] = f"images/{filename}"
             except Exception as e:
                 logger.warning("api_admin_categories image upload: %s", e)
 
     save_categories_local(cats)
     ok = push_categories_github(cats)
-    return web.json_response({'ok': True, 'github': ok})
+    if not ok:
+        logger.warning("push_categories_github FAILED — проверьте GITHUB_TOKEN")
+    return web.json_response({'ok': True, 'github': ok, 'image_ok': image_ok, 'data': cats})
 
 
 async def api_admin_settings(request: web.Request) -> web.Response:

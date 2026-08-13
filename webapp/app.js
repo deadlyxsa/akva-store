@@ -1070,6 +1070,18 @@ function renderAvailBody() {
   });
 }
 
+// Показывает итог сохранения с учётом флага github — HTTP 200 не значит,
+// что изменения реально отправились на GitHub Pages (мог протухнуть токен).
+function showSaveResult(json, successMsg) {
+  if (json && json.github === false) {
+    showToast('⚠️ Сохранено локально, но НЕ отправилось на сайт (проверьте GITHUB_TOKEN)');
+  } else if (json && json.image_ok === false) {
+    showToast('⚠️ Сохранено, но фото не загрузилось (проверьте GITHUB_TOKEN)');
+  } else {
+    showToast(successMsg);
+  }
+}
+
 async function saveAvailability() {
   availability = { ...availDraft };
   const btn = document.getElementById('availSaveBtn');
@@ -1081,9 +1093,10 @@ async function saveAvailability() {
       body:    JSON.stringify({ data: availability }),
     });
     if (resp.ok) {
+      const json = await resp.json();
       closeAvailModal();
       renderProducts();
-      showToast('✅ Наличие сохранено');
+      showSaveResult(json, '✅ Наличие сохранено');
     } else {
       showToast('❌ Ошибка сохранения');
     }
@@ -1315,11 +1328,13 @@ async function saveCategories() {
       body:    JSON.stringify({ data: exportData }),
     });
     if (resp.ok) {
-      // Очищаем pendingImage после загрузки
-      CATEGORIES.forEach(c => delete c.pendingImage);
+      const json = await resp.json();
+      // Очищаем pendingImage, синхронизируем с тем, что реально сохранил сервер
+      if (Array.isArray(json.data)) CATEGORIES = json.data;
+      else CATEGORIES.forEach(c => delete c.pendingImage);
       renderCategories();
       renderCategoriesEditor();
-      showToast('✅ Категории сохранены');
+      showSaveResult(json, '✅ Категории сохранены');
     } else {
       showToast('❌ Ошибка сохранения');
     }
@@ -1431,7 +1446,7 @@ async function saveSettings() {
       const j = await resp.json();
       SETTINGS = { ...SETTINGS, ...(j.data || data) };
       renderBanner();
-      showToast('✅ Настройки сохранены');
+      showSaveResult(j, '✅ Настройки сохранены');
     } else {
       showToast('❌ Ошибка сохранения');
     }
@@ -1445,6 +1460,7 @@ async function saveSettings() {
 function renderTeamEditor() {
   if (!isOwnerUser()) return;
   const modal = document.getElementById('prodEditorModal');
+  const myId = tg?.initDataUnsafe?.user?.id;
 
   const rowHtml = (person, role) => `
     <div class="prod-list-item" id="team-${role}-${person.id}">
@@ -1454,6 +1470,14 @@ function renderTeamEditor() {
       </div>
       <div class="prod-list-actions">
         <button class="prod-delete-btn" data-role="${role}" data-id="${person.id}" title="Удалить">🗑</button>
+      </div>
+    </div>
+  `;
+  const lockedRowHtml = (id, label) => `
+    <div class="prod-list-item">
+      <div class="prod-list-info">
+        <div class="prod-list-name">🔒 ${label}${id === myId ? ' (вы)' : ''}</div>
+        <div class="prod-list-meta">ID: ${id}</div>
       </div>
     </div>
   `;
@@ -1473,11 +1497,13 @@ function renderTeamEditor() {
     <div style="padding:12px 16px 0">
       <label class="prod-field-label">👑 Администраторы (товары, категории, настройки, промокоды)</label>
       <div class="prod-list" id="teamAdminList">
-        ${TEAM_DATA.extra_admins.map(a => rowHtml(a, 'admin')).join('') || '<div class="prod-list-meta" style="padding:8px 0">Пока нет дополнительных администраторов</div>'}
+        ${OWNER_ADMIN_IDS_CLIENT.map(id => lockedRowHtml(id, 'Владелец')).join('')}
+        ${TEAM_DATA.extra_admins.map(a => rowHtml(a, 'admin')).join('')}
       </div>
       <label class="prod-field-label" style="margin-top:14px">👨‍💼 Менеджеры (чат с клиентами, товары, наличие)</label>
       <div class="prod-list" id="teamManagerList">
-        ${TEAM_DATA.extra_managers.map(m => rowHtml(m, 'manager')).join('') || '<div class="prod-list-meta" style="padding:8px 0">Пока нет дополнительных менеджеров</div>'}
+        ${OWNER_MANAGER_IDS_CLIENT.map(id => lockedRowHtml(id, 'Основной менеджер')).join('')}
+        ${TEAM_DATA.extra_managers.map(m => rowHtml(m, 'manager')).join('')}
       </div>
 
       <label class="prod-field-label" style="margin-top:14px">Добавить человека</label>
@@ -1488,7 +1514,7 @@ function renderTeamEditor() {
         <button class="avail-save-btn" id="teamAddManagerBtn" style="flex:1">👨‍💼 Как менеджера</button>
       </div>
       <div class="prod-list-meta" style="padding:8px 0">
-        Telegram ID можно узнать у бота @userinfobot
+        🔒 = неизменяемые владельцы (защита от блокировки). Telegram ID можно узнать у бота @userinfobot
       </div>
     </div>
   `;
@@ -1543,7 +1569,7 @@ async function saveTeam() {
         MANAGER_IDS_CLIENT = [...new Set([...ADMIN_IDS_CLIENT, ...OWNER_MANAGER_IDS_CLIENT, ...extraManagerIds])];
       }
       renderTeamEditor();
-      showToast('✅ Команда обновлена');
+      showSaveResult(j, '✅ Команда обновлена');
     } else {
       showToast('❌ Ошибка сохранения');
     }
@@ -1602,7 +1628,12 @@ async function deleteProduct(productId) {
     });
     renderProductsList();
     renderProducts();
-    showToast(resp.ok ? '✅ Товар удалён' : '⚠️ Удалён локально, ошибка сохранения');
+    if (resp.ok) {
+      const json = await resp.json();
+      showSaveResult(json, '✅ Товар удалён');
+    } else {
+      showToast('⚠️ Удалён локально, ошибка сохранения');
+    }
   } catch (_) {
     renderProductsList();
     renderProducts();
@@ -1815,14 +1846,16 @@ async function saveProduct(productId) {
     });
     if (resp.ok) {
       const json = await resp.json();
-      // Обновляем картинку в локальном PRODUCTS если сервер её загрузил
-      if (body.image && json.ok) {
+      // Картинку в локальном PRODUCTS обновляем ТОЛЬКО если сервер реально
+      // загрузил её в GitHub — иначе локальный путь будет вести в никуда
+      // и после перезахода в приложение вернётся старое фото.
+      if (body.image && json.image_ok) {
         const idx = PRODUCTS.findIndex(p => p.id === productId);
         if (idx !== -1) PRODUCTS[idx].image = `images/${pendingImageData.filename}`;
       }
       renderProductsList();
       renderProducts();
-      showToast(editingIsNew ? '✅ Товар добавлен' : '✅ Товар обновлён');
+      showSaveResult(json, editingIsNew ? '✅ Товар добавлен' : '✅ Товар обновлён');
     } else {
       showToast('❌ Ошибка сохранения');
       if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Сохранить'; }
