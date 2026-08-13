@@ -1164,6 +1164,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             f"{role} Akva Store\n\n"
             "Чат с клиентами — через приложение.\n" +
             ("/promo — управление промокодами" if is_admin(update) else ""),
+            reply_markup=shop_keyboard(),
             parse_mode="HTML",
         )
         return
