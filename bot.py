@@ -37,7 +37,8 @@ from telegram import (
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
-    CallbackQueryHandler, filters, ContextTypes
+    CallbackQueryHandler, ConversationHandler,
+    filters, ContextTypes,
 )
 
 # ══════════════════════════════════════════════════════════════
@@ -129,8 +130,8 @@ typing_state: dict[int, dict] = {}
 # Глобальный объект приложения PTB (для доступа из API-хендлеров)
 _bot_app = None
 
-# Администраторы в режиме создания поста: {user_id}
-admin_post_state: set[int] = set()
+# Состояния для /post ConversationHandler
+POST_TEXT, POST_PHOTO_CHOICE, POST_PHOTO, POST_CONFIRM = range(4)
 
 # {user_id: {name, username, unread, last_msg, last_time}}
 customer_chats: dict[int, dict] = {}
@@ -1504,46 +1505,6 @@ async def handle_admin_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -
     if uid not in ADMIN_IDS and uid not in MANAGER_IDS:
         return
 
-    # ── Режим создания поста (только администраторы) ──────────
-    if uid in ADMIN_IDS and uid in admin_post_state:
-        admin_post_state.discard(uid)
-        text  = (update.message.caption or update.message.text or '').strip()
-        photo = update.message.photo[-1] if update.message.photo else None
-
-        recipients = list(customer_chats.keys())
-        if not recipients:
-            await update.message.reply_text("📭 Нет получателей (ни один клиент ещё не писал боту).")
-            return
-
-        sent = failed = 0
-        for cid in recipients:
-            try:
-                if photo:
-                    await ctx.bot.send_photo(
-                        chat_id=cid,
-                        photo=photo.file_id,
-                        caption=f"📢 <b>Akva Store</b>\n\n{html.escape(text)}" if text else "📢 <b>Akva Store</b>",
-                        parse_mode="HTML",
-                    )
-                else:
-                    await ctx.bot.send_message(
-                        chat_id=cid,
-                        text=f"📢 <b>Akva Store</b>\n\n{html.escape(text)}",
-                        parse_mode="HTML",
-                    )
-                sent += 1
-            except Exception as e:
-                logger.warning("post to %s failed: %s", cid, e)
-                failed += 1
-
-        await update.message.reply_text(
-            f"✅ Пост разослан!\n\n"
-            f"Доставлено: <b>{sent}</b>\n"
-            f"Ошибок: <b>{failed}</b>",
-            parse_mode="HTML",
-        )
-        return
-
     # ── Загрузка фото товара ──────────────────────────────────
     if not update.message.photo:
         return
@@ -1600,17 +1561,122 @@ async def handle_admin_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -
         )
 
 
-async def cmd_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """/post — рассылка новостей/поступлений всем клиентам (только администратор)."""
+async def cmd_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    """/post — многошаговая рассылка (только администратор)."""
     if not is_admin(update):
-        return
-    admin_post_state.add(update.effective_user.id)
+        return ConversationHandler.END
     await update.message.reply_text(
-        "📢 <b>Создать пост</b>\n\n"
-        "Отправьте текст (можно с фото).\n"
-        "Пост будет разослан всем клиентам, которые взаимодействовали с ботом.",
+        "📢 <b>Создать рассылку</b>\n\n"
+        "✏️ Напишите текст публикации:",
         parse_mode="HTML",
     )
+    return POST_TEXT
+
+
+async def post_got_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    text = (update.message.text or '').strip()
+    if not text:
+        await update.message.reply_text("❌ Текст не может быть пустым. Попробуйте ещё раз:")
+        return POST_TEXT
+    ctx.user_data['post_text'] = text
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🖼 Да, добавить фото", callback_data="post_photo_yes"),
+        InlineKeyboardButton("📤 Нет, без фото",     callback_data="post_photo_no"),
+    ]])
+    await update.message.reply_text("Хотите добавить картинку к посту?", reply_markup=kb)
+    return POST_PHOTO_CHOICE
+
+
+async def post_photo_choice(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    if query.data == "post_photo_yes":
+        await query.edit_message_text("📸 Отправьте картинку в чат:")
+        return POST_PHOTO
+    text = ctx.user_data.get('post_text', '')
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Опубликовать", callback_data="post_confirm_yes"),
+        InlineKeyboardButton("❌ Отмена",       callback_data="post_confirm_no"),
+    ]])
+    await query.edit_message_text(
+        f"👁 <b>Предпросмотр поста:</b>\n\n"
+        f"📢 <b>Akva Store</b>\n\n{html.escape(text)}\n\n"
+        f"──────────────────\n"
+        f"Опубликовать для всех клиентов?",
+        reply_markup=kb,
+        parse_mode="HTML",
+    )
+    return POST_CONFIRM
+
+
+async def post_got_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    text     = ctx.user_data.get('post_text', '')
+    photo_id = update.message.photo[-1].file_id
+    ctx.user_data['post_photo_id'] = photo_id
+    caption  = (
+        f"👁 <b>Предпросмотр поста:</b>\n\n📢 <b>Akva Store</b>\n\n{html.escape(text)}"
+        if text else
+        "👁 <b>Предпросмотр поста:</b>\n\n📢 <b>Akva Store</b>"
+    )
+    await update.message.reply_photo(photo=photo_id, caption=caption, parse_mode="HTML")
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Опубликовать", callback_data="post_confirm_yes"),
+        InlineKeyboardButton("❌ Отмена",       callback_data="post_confirm_no"),
+    ]])
+    await update.message.reply_text("Опубликовать для всех клиентов?", reply_markup=kb)
+    return POST_CONFIRM
+
+
+async def post_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "post_confirm_no":
+        ctx.user_data.pop('post_text', None)
+        ctx.user_data.pop('post_photo_id', None)
+        await query.edit_message_text("❌ Рассылка отменена.")
+        return ConversationHandler.END
+
+    text       = ctx.user_data.get('post_text', '')
+    photo_id   = ctx.user_data.get('post_photo_id')
+    recipients = list(customer_chats.keys())
+
+    await query.edit_message_text("⏳ Отправляю рассылку...")
+
+    sent = failed = 0
+    for cid in recipients:
+        try:
+            if photo_id:
+                cap = f"📢 <b>Akva Store</b>\n\n{html.escape(text)}" if text else "📢 <b>Akva Store</b>"
+                await ctx.bot.send_photo(chat_id=cid, photo=photo_id, caption=cap, parse_mode="HTML")
+            else:
+                await ctx.bot.send_message(
+                    chat_id=cid,
+                    text=f"📢 <b>Akva Store</b>\n\n{html.escape(text)}",
+                    parse_mode="HTML",
+                )
+            sent += 1
+        except Exception as e:
+            logger.warning("post to %s failed: %s", cid, e)
+            failed += 1
+
+    ctx.user_data.pop('post_text', None)
+    ctx.user_data.pop('post_photo_id', None)
+
+    await query.message.reply_text(
+        f"✅ Рассылка завершена!\n\n"
+        f"Доставлено: <b>{sent}</b>\n"
+        f"Ошибок: <b>{failed}</b>",
+        parse_mode="HTML",
+    )
+    return ConversationHandler.END
+
+
+async def post_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    ctx.user_data.pop('post_text', None)
+    ctx.user_data.pop('post_photo_id', None)
+    await update.message.reply_text("❌ Создание рассылки отменено.")
+    return ConversationHandler.END
 
 
 async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1738,7 +1804,29 @@ async def _run() -> None:
 
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("promo", cmd_promo))
-    application.add_handler(CommandHandler("post",  cmd_post))
+
+    # /post — многошаговый диалог (регистрируем до общих хендлеров)
+    post_conv = ConversationHandler(
+        entry_points=[CommandHandler("post", cmd_post)],
+        states={
+            POST_TEXT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, post_got_text),
+            ],
+            POST_PHOTO_CHOICE: [
+                CallbackQueryHandler(post_photo_choice, pattern="^post_photo_"),
+            ],
+            POST_PHOTO: [
+                MessageHandler(filters.PHOTO, post_got_photo),
+            ],
+            POST_CONFIRM: [
+                CallbackQueryHandler(post_confirm, pattern="^post_confirm_"),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", post_cancel)],
+        per_user=True,
+        per_chat=True,
+    )
+    application.add_handler(post_conv)
 
     application.add_handler(MessageHandler(
         filters.StatusUpdate.WEB_APP_DATA, handle_order
