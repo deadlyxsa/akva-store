@@ -27,6 +27,8 @@ const CATEGORY_DEFAULTS = {
   pouches:      { gradient: ['#1b3a4b', '#00b4d8'], emoji: '🫙' },
   snus:         { gradient: ['#1b4332', '#52b788'], emoji: '🌿' },
   accessories:  { gradient: ['#1e3a5f', '#38bdf8'], emoji: '🔧' },
+  snacks:       { gradient: ['#3b1f00', '#f59e0b'], emoji: '🍬' },
+  drinks:       { gradient: ['#0c2340', '#38bdf8'], emoji: '🧃' },
 };
 
 // Живой массив товаров — заполняется из products.json при загрузке

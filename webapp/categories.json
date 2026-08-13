@@ -3,5 +3,7 @@
   {"id": "liquids",     "label": "Жидкости",    "img": "images/Жидкость.png"},
   {"id": "disposables", "label": "Одноразки",   "img": "images/Одноразки.png", "imgSize": 38},
   {"id": "snus",        "label": "Снюс",        "img": "images/снюс.png"},
-  {"id": "accessories", "label": "Расходники",  "img": "images/Расходники.png"}
+  {"id": "accessories", "label": "Расходники",  "img": "images/Расходники.png"},
+  {"id": "snacks",      "label": "Вкусняшки",   "img": "images/Вкусняшки.png"},
+  {"id": "drinks",      "label": "Напитки",     "img": "images/Напитки.png"}
 ]
