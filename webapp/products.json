@@ -145,14 +145,14 @@
   },
   {
     "id": 10,
-    "name": "Картридж Vaporesso XROS",
+    "name": "Картридж  XROS",
     "price": 300,
     "badge": null,
     "strength": null,
     "description": "",
     "category": "accessories",
     "variantLabel": "Объём",
-    "image": "images/1786585738384_IMG_1545.jpeg",
+    "image": "images/картридж хрос.png",
     "variants": [
       "2 мл",
       "3 мл"
