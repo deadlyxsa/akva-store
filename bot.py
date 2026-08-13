@@ -33,7 +33,7 @@ if _env_file.exists():
 from telegram import (
     Update, WebAppInfo,
     InlineKeyboardButton, InlineKeyboardMarkup,
-    KeyboardButton, ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -605,12 +605,10 @@ def record_user_promo(user_id: int, code: str) -> None:
 #   КЛАВИАТУРЫ
 # ══════════════════════════════════════════════════════════════
 
-def shop_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton("🛍 Магазин", web_app=WebAppInfo(url=WEBAPP_URL))]],
-        resize_keyboard=True,
-        input_field_placeholder="Открой магазин и оформи заказ...",
-    )
+def shop_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("🛍 Открыть магазин", web_app=WebAppInfo(url=WEBAPP_URL))
+    ]])
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1158,6 +1156,10 @@ def make_api_app() -> web.Application:
 # ══════════════════════════════════════════════════════════════
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    # Убираем старую reply-keyboard если была
+    rm = await update.message.reply_text("👋", reply_markup=ReplyKeyboardRemove())
+    await rm.delete()
+
     if is_manager(update):
         role = "👑 Администратор" if is_admin(update) else "👨‍💼 Менеджер"
         await update.message.reply_text(
@@ -1174,7 +1176,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "Добро пожаловать в <b>Akva Store</b> 🌊\n"
         "Вейп · Жидкости · Расходники · Нефтеюганск\n\n"
         "<b>Как сделать заказ:</b>\n"
-        "1️⃣ Нажми <b>«🛍 Магазин»</b> внизу экрана\n"
+        "1️⃣ Нажми <b>«🛍 Открыть магазин»</b> ниже\n"
         "2️⃣ Выбери товары и добавь в корзину\n"
         "3️⃣ Оформи заказ — заполни анкету с данными\n"
         "4️⃣ После оформления откроется <b>чат с менеджером</b> — напиши туда адрес и всё необходимое 💙",
