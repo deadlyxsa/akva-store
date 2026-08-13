@@ -481,6 +481,7 @@ function applyPromo(code) {
   updatePromoUI();
   renderProducts();
   renderCartModal();
+  refreshCartBar();
   showToast(`Скидка ${discount}% применена 🎉`);
   tg?.HapticFeedback?.notificationOccurred('success');
 }
@@ -492,6 +493,7 @@ function removePromo() {
   updatePromoUI();
   renderProducts();
   renderCartModal();
+  refreshCartBar();
 }
 
 function updatePromoUI() {
