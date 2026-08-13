@@ -33,6 +33,7 @@ if _env_file.exists():
 from telegram import (
     Update, WebAppInfo,
     InlineKeyboardButton, InlineKeyboardMarkup,
+    KeyboardButton, ReplyKeyboardMarkup,
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -604,10 +605,12 @@ def record_user_promo(user_id: int, code: str) -> None:
 #   КЛАВИАТУРЫ
 # ══════════════════════════════════════════════════════════════
 
-def shop_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton("🛍 Открыть магазин", web_app=WebAppInfo(url=WEBAPP_URL))
-    ]])
+def shop_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton("🛍 Магазин", web_app=WebAppInfo(url=WEBAPP_URL))]],
+        resize_keyboard=True,
+        input_field_placeholder="Открой магазин и оформи заказ...",
+    )
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1170,7 +1173,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "Добро пожаловать в <b>Akva Store</b> 🌊\n"
         "Вейп · Жидкости · Расходники · Нефтеюганск\n\n"
         "<b>Как сделать заказ:</b>\n"
-        "1️⃣ Нажми <b>«🛍 Открыть магазин»</b> ниже\n"
+        "1️⃣ Нажми <b>«🛍 Магазин»</b> внизу экрана\n"
         "2️⃣ Выбери товары и добавь в корзину\n"
         "3️⃣ Оформи заказ — заполни анкету с данными\n"
         "4️⃣ После оформления откроется <b>чат с менеджером</b> — напиши туда адрес и всё необходимое 💙",
