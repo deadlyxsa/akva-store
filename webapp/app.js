@@ -1360,7 +1360,7 @@ function renderSettingsEditor() {
       <button class="prod-tab prod-tab--active" id="tabSettings">⚙️ Настройки</button>
       ${isOwnerUser() ? '<button class="prod-tab" id="tabTeam">👥 Команда</button>' : ''}
     </div>
-    <div style="padding:12px 16px 0">
+    <div class="prod-edit-body">
       <label class="prod-field-label">Заголовок баннера (можно &lt;br&gt; для переноса строки)</label>
       <input class="prod-field-input" id="setBannerTitle" maxlength="200" value="${escHtml(SETTINGS.banner_title)}" />
       <label class="prod-field-label">Подзаголовок баннера</label>
@@ -1494,7 +1494,7 @@ function renderTeamEditor() {
       <button class="prod-tab" id="tabSettings">⚙️ Настройки</button>
       <button class="prod-tab prod-tab--active" id="tabTeam">👥 Команда</button>
     </div>
-    <div style="padding:12px 16px 0">
+    <div class="prod-edit-body">
       <label class="prod-field-label">👑 Администраторы (товары, категории, настройки, промокоды)</label>
       <div class="prod-list" id="teamAdminList">
         ${OWNER_ADMIN_IDS_CLIENT.map(id => lockedRowHtml(id, 'Владелец')).join('')}
