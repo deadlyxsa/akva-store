@@ -157,19 +157,5 @@
       "2 мл",
       "3 мл"
     ]
-  },
-  {
-    "id": 11,
-    "name": "Monster",
-    "price": 180,
-    "badge": "Новинка",
-    "strength": "999",
-    "description": "",
-    "category": "drinks",
-    "variantLabel": "Mango",
-    "image": "images/1786588117543_IMG_9345.jpeg",
-    "variants": [
-      "Monster"
-    ]
   }
 ]
