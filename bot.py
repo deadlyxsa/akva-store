@@ -31,7 +31,7 @@ if _env_file.exists():
             _k, _v = _line.split("=", 1)
             os.environ.setdefault(_k.strip(), _v.strip())
 from telegram import (
-    Update, WebAppInfo, KeyboardButton, ReplyKeyboardMarkup,
+    Update, WebAppInfo,
     InlineKeyboardButton, InlineKeyboardMarkup,
 )
 from telegram.ext import (
@@ -255,18 +255,23 @@ def push_products_github(data: list) -> bool:
             "Accept": "application/vnd.github.v3+json",
             "Content-Type": "application/json",
         }
-        req = urllib.request.Request(api_url, headers=headers)
-        with urllib.request.urlopen(req) as resp:
-            sha = json.loads(resp.read()).get("sha", "")
-        content_b64 = base64.b64encode(
-            json.dumps(data, ensure_ascii=False, indent=2).encode()
-        ).decode()
-        payload = json.dumps({
+        sha = ""
+        try:
+            req = urllib.request.Request(api_url, headers=headers)
+            with urllib.request.urlopen(req) as resp:
+                sha = json.loads(resp.read()).get("sha", "")
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                raise
+        payload_d: dict = {
             "message": "Update products via bot",
-            "content": content_b64,
-            "sha": sha,
-        }).encode()
-        req = urllib.request.Request(api_url, data=payload, headers=headers, method="PUT")
+            "content": base64.b64encode(
+                json.dumps(data, ensure_ascii=False, indent=2).encode()
+            ).decode(),
+        }
+        if sha:
+            payload_d["sha"] = sha
+        req = urllib.request.Request(api_url, data=json.dumps(payload_d).encode(), headers=headers, method="PUT")
         with urllib.request.urlopen(req) as resp:
             return resp.status in (200, 201)
     except Exception as e:
@@ -599,14 +604,10 @@ def record_user_promo(user_id: int, code: str) -> None:
 #   КЛАВИАТУРЫ
 # ══════════════════════════════════════════════════════════════
 
-def main_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton("🛍 Магазин", web_app=WebAppInfo(url=WEBAPP_URL))],
-        ],
-        resize_keyboard=True,
-        input_field_placeholder="Открой магазин и оформи заказ...",
-    )
+def shop_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("🛍 Открыть магазин", web_app=WebAppInfo(url=WEBAPP_URL))
+    ]])
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1169,11 +1170,11 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "Добро пожаловать в <b>Akva Store</b> 🌊\n"
         "Вейп · Жидкости · Расходники · Нефтеюганск\n\n"
         "<b>Как сделать заказ:</b>\n"
-        "1️⃣ Нажми <b>«🛍 Магазин»</b>\n"
+        "1️⃣ Нажми <b>«🛍 Открыть магазин»</b> ниже\n"
         "2️⃣ Выбери товары и добавь в корзину\n"
         "3️⃣ Оформи заказ — заполни анкету с данными\n"
         "4️⃣ После оформления откроется <b>чат с менеджером</b> — напиши туда адрес и всё необходимое 💙",
-        reply_markup=main_keyboard(),
+        reply_markup=shop_keyboard(),
         parse_mode="HTML",
     )
 

@@ -1539,7 +1539,7 @@ async function saveProduct(productId) {
 
 function openChat(preSelectedCustomerId = null) {
   if (!API_URL) { showToast('Чат временно недоступен'); return; }
-  if (!tg?.initData) { showToast('Откройте приложение в Telegram'); return; }
+  if (!tg) { showToast('Откройте приложение в Telegram'); return; }
 
   // Закрываем корзину и анкету если открыты
   closeCartModal();
