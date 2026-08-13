@@ -96,6 +96,7 @@ let chatLastTs = 0;
 let chatPollTimer = null;
 let chatOpen = false;
 let chatTypingDebounce = null;
+let chatPollFailures = 0;
 
 // Наличие вкусов: { "productId:variant": true/false }
 let availability = {};
@@ -1538,6 +1539,7 @@ async function saveProduct(productId) {
 
 function openChat(preSelectedCustomerId = null) {
   if (!API_URL) { showToast('Чат временно недоступен'); return; }
+  if (!tg?.initData) { showToast('Откройте приложение в Telegram'); return; }
 
   // Закрываем корзину и анкету если открыты
   closeCartModal();
@@ -1579,6 +1581,7 @@ function stopChatPoll() {
 
 function startChatPoll() {
   stopChatPoll();
+  chatPollFailures = 0;
   pollChat();
   chatPollTimer = setInterval(pollChat, 2500);
 }
@@ -1712,7 +1715,20 @@ async function pollChat() {
     const resp = await fetch(`${API_URL}/api/poll?${params}`, {
       headers: { 'X-Init-Data': tg?.initData || '' },
     });
-    if (!resp.ok) return;
+    if (!resp.ok) {
+      chatPollFailures++;
+      if (chatPollFailures >= 2) {
+        const body = document.getElementById('chatBody');
+        if (body?.querySelector('.chat-loading')) {
+          body.innerHTML = resp.status === 401
+            ? '<div class="chat-empty-hint">⚠️ Откройте приложение через Telegram</div>'
+            : '<div class="chat-empty-hint">⚠️ Нет связи с сервером</div>';
+          stopChatPoll();
+        }
+      }
+      return;
+    }
+    chatPollFailures = 0;
     const data = await resp.json();
 
     if (data.ts) chatLastTs = data.ts;
@@ -1730,7 +1746,9 @@ async function pollChat() {
       const showTyping = isMgr ? data.customer_typing : data.manager_typing;
       indicator.classList.toggle('visible', !!showTyping);
     }
-  } catch (_) {}
+  } catch (_) {
+    chatPollFailures++;
+  }
 }
 
 function closeOrder(customerId) {
@@ -1821,7 +1839,9 @@ async function sendChatMessage() {
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       input.value = text;  // возвращаем текст если не отправилось
-      showToast(err.error === 'Rate limited' ? '⚠️ Слишком часто' : 'Ошибка отправки');
+      showToast(err.error === 'Rate limited' ? '⚠️ Слишком часто'
+              : resp.status === 401 ? '⚠️ Откройте в Telegram'
+              : 'Ошибка отправки');
       return;
     }
     // Моментальный poll чтобы сообщение появилось без задержки
