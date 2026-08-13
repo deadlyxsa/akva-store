@@ -1759,10 +1759,9 @@ async def _run() -> None:
     await web.TCPSite(runner, '0.0.0.0', port).start()
     logger.info("💬 Chat API запущен на порту %d", port)
 
-    # Публикуем config.json на GitHub Pages
-    if BOT_API_URL and GITHUB_TOKEN:
-        loop = asyncio.get_event_loop()
-        loop.run_in_executor(None, push_config_github)
+    # config.json уже содержит актуальный API URL — не пушим при каждом старте,
+    # чтобы не вызывать бесконечный цикл Railway → GitHub → Railway
+    logger.info("API URL: %s", BOT_API_URL)
 
     try:
         await asyncio.Event().wait()
