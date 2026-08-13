@@ -1502,7 +1502,7 @@ async function saveProduct(productId) {
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Сохраняем...'; }
 
   const body = { data: exportData };
-  if (pendingImageData && !editingIsNew) {
+  if (pendingImageData) {
     body.image = { productId, ...pendingImageData };
   }
 
