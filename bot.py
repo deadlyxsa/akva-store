@@ -165,6 +165,24 @@ CATEGORIES_FILE      = _BASE / "webapp" / "categories.json"
 GITHUB_PRODUCTS_PATH = "webapp/products.json"
 GITHUB_CATS_PATH     = "webapp/categories.json"
 CHAT_MESSAGES_FILE   = _BASE / "chat_messages.json"
+SETTINGS_FILE        = _BASE / "webapp" / "settings.json"
+GITHUB_SETTINGS_PATH = "webapp/settings.json"
+TEAM_FILE            = _BASE / "webapp" / "team.json"
+GITHUB_TEAM_PATH     = "webapp/team.json"
+
+DEFAULT_SETTINGS: dict = {
+    "banner_title": "Свежее<br>поступление 🌊",
+    "banner_sub":   "🛵 Доставка по городу от 150 ₽ · вне города цена по договорённости",
+    "banner_pill":  "✨ Бесплатная доставка от 4 500 ₽",
+    "payment_methods":  ["Онлайн-переводом", "Наличными курьеру"],
+    "delivery_methods": ["Доставка", "Самовывоз"],
+}
+SETTINGS: dict = dict(DEFAULT_SETTINGS)
+
+# Дополнительные админы/менеджеры, назначаемые владельцем через сайт.
+# ADMIN_IDS/MANAGER_IDS выше — неизменяемые "владельцы" (защита от блокировки себя же).
+extra_admins:   dict[int, str] = {}   # {id: name}
+extra_managers: dict[int, str] = {}   # {id: name}
 
 
 def load_promo_usage() -> None:
@@ -320,6 +338,92 @@ def push_categories_github(data: list) -> bool:
     except Exception as e:
         logger.warning("GitHub categories API error: %s", e)
         return False
+
+def push_json_github(data, path: str, message: str) -> bool:
+    """Универсальная запись JSON-файла в репозиторий через GitHub Contents API."""
+    if not GITHUB_TOKEN:
+        return False
+    try:
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}"
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json",
+        }
+        sha = ""
+        try:
+            req = urllib.request.Request(api_url, headers=headers)
+            with urllib.request.urlopen(req) as resp:
+                sha = json.loads(resp.read()).get("sha", "")
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                raise
+        payload_d: dict = {
+            "message": message,
+            "content": base64.b64encode(
+                json.dumps(data, ensure_ascii=False, indent=2).encode()
+            ).decode(),
+        }
+        if sha:
+            payload_d["sha"] = sha
+        req = urllib.request.Request(api_url, data=json.dumps(payload_d).encode(), headers=headers, method="PUT")
+        with urllib.request.urlopen(req) as resp:
+            return resp.status in (200, 201)
+    except Exception as e:
+        logger.warning("GitHub API error (%s): %s", path, e)
+        return False
+
+
+def load_settings() -> None:
+    if SETTINGS_FILE.exists():
+        try:
+            data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            SETTINGS.update({**DEFAULT_SETTINGS, **data})
+        except Exception as e:
+            logger.warning("settings.json: %s", e)
+
+def save_settings_local(data: dict) -> None:
+    try:
+        SETTINGS_FILE.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception as e:
+        logger.warning("save settings: %s", e)
+
+
+def load_team() -> None:
+    if TEAM_FILE.exists():
+        try:
+            data = json.loads(TEAM_FILE.read_text(encoding="utf-8"))
+            extra_admins.clear()
+            extra_managers.clear()
+            for a in data.get("extra_admins", []):
+                extra_admins[int(a["id"])] = str(a.get("name", ""))[:50]
+            for m in data.get("extra_managers", []):
+                extra_managers[int(m["id"])] = str(m.get("name", ""))[:50]
+        except Exception as e:
+            logger.warning("team.json: %s", e)
+
+def save_team_local(data: dict) -> None:
+    try:
+        TEAM_FILE.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception as e:
+        logger.warning("save team: %s", e)
+
+def team_export() -> dict:
+    return {
+        "extra_admins":   [{"id": i, "name": n} for i, n in extra_admins.items()],
+        "extra_managers": [{"id": i, "name": n} for i, n in extra_managers.items()],
+    }
+
+def all_admin_ids() -> set[int]:
+    return ADMIN_IDS | set(extra_admins)
+
+def all_manager_ids() -> set[int]:
+    return MANAGER_IDS | set(extra_managers) | all_admin_ids()
+
 
 def push_image_github(img_bytes: bytes, path: str) -> bool:
     """Загружает изображение в репозиторий через GitHub API."""
@@ -544,14 +648,17 @@ def push_availability_github(data: dict) -> bool:
         return False
 
 
-def is_admin(update: Update) -> bool:
-    """Только администратор (управление ботом и промокодами)."""
+def is_owner(update: Update) -> bool:
+    """Только неизменяемый владелец (может назначать/снимать админов и менеджеров)."""
     return update.effective_user.id in ADMIN_IDS
+
+def is_admin(update: Update) -> bool:
+    """Администратор (владелец или назначенный через сайт)."""
+    return update.effective_user.id in all_admin_ids()
 
 def is_manager(update: Update) -> bool:
     """Менеджер или администратор (общение с клиентами, продажи)."""
-    uid = update.effective_user.id
-    return uid in MANAGER_IDS or uid in ADMIN_IDS
+    return update.effective_user.id in all_manager_ids()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -565,7 +672,7 @@ async def notify_managers(
     exclude_id: int | None = None,
 ) -> None:
     """Отправляет сообщение всем менеджерам и админу (опционально кроме exclude_id)."""
-    for mid in MANAGER_IDS | ADMIN_IDS:
+    for mid in all_manager_ids():
         if mid == exclude_id:
             continue
         try:
@@ -650,7 +757,7 @@ async def api_poll(request: web.Request) -> web.Response:
         return web.json_response({'error': 'Unauthorized'}, status=401)
 
     uid    = int(user.get('id', 0))
-    is_mgr = uid in MANAGER_IDS or uid in ADMIN_IDS
+    is_mgr = uid in all_manager_ids()
 
     if is_mgr:
         cid_str = request.rel_url.query.get('customer_id', '')
@@ -683,7 +790,7 @@ async def api_send(request: web.Request) -> web.Response:
         return web.json_response({'error': 'Unauthorized'}, status=401)
 
     uid    = int(user.get('id', 0))
-    is_mgr = uid in MANAGER_IDS or uid in ADMIN_IDS
+    is_mgr = uid in all_manager_ids()
 
     try:
         body = await request.json()
@@ -698,7 +805,7 @@ async def api_send(request: web.Request) -> web.Response:
         customer_id = int(body.get('customer_id', 0))
         if not customer_id or customer_id not in customer_chats:
             return web.json_response({'error': 'customer_id required'}, status=400)
-        name = 'Администратор Akva Store' if uid in ADMIN_IDS else 'Менеджер Akva Store'
+        name = 'Администратор Akva Store' if uid in all_admin_ids() else 'Менеджер Akva Store'
         msg  = add_chat_message(customer_id, 'manager', text, name)
         if _bot_app:
             chat_kb = InlineKeyboardMarkup([[
@@ -754,7 +861,7 @@ async def api_send(request: web.Request) -> web.Response:
                     web_app=WebAppInfo(url=f"{WEBAPP_URL}?open=chat&cid={customer_id}"),
                 )
             ]])
-            for mid in MANAGER_IDS | ADMIN_IDS:
+            for mid in all_manager_ids():
                 try:
                     await _bot_app.bot.send_message(chat_id=mid, text=mgr_text, parse_mode="HTML",
                                                     reply_markup=reply_kb)
@@ -769,7 +876,7 @@ async def api_typing(request: web.Request) -> web.Response:
         return web.json_response({'error': 'Unauthorized'}, status=401)
 
     uid    = int(user.get('id', 0))
-    is_mgr = uid in MANAGER_IDS or uid in ADMIN_IDS
+    is_mgr = uid in all_manager_ids()
 
     try:
         body = await request.json()
@@ -792,7 +899,7 @@ async def api_rooms(request: web.Request) -> web.Response:
         return web.json_response({'error': 'Unauthorized'}, status=401)
 
     uid = int(user.get('id', 0))
-    if uid not in MANAGER_IDS and uid not in ADMIN_IDS:
+    if uid not in all_manager_ids():
         return web.json_response({'error': 'Forbidden'}, status=403)
 
     rooms = [
@@ -816,7 +923,7 @@ async def api_order(request: web.Request) -> web.Response:
         return web.json_response({'error': 'Unauthorized'}, status=401)
 
     uid = int(user.get('id', 0))
-    if uid in MANAGER_IDS or uid in ADMIN_IDS:
+    if uid in all_manager_ids():
         return web.json_response({'error': 'Forbidden'}, status=403)
 
     # Кулдаун
@@ -979,7 +1086,7 @@ async def api_order(request: web.Request) -> web.Response:
                 web_app=WebAppInfo(url=f"{WEBAPP_URL}?open=chat&cid={uid}"),
             )
         ]])
-        for mid in MANAGER_IDS | ADMIN_IDS:
+        for mid in all_manager_ids():
             try:
                 await _bot_app.bot.send_message(
                     chat_id=mid, text=order_text, parse_mode="HTML",
@@ -997,7 +1104,7 @@ async def api_close_chat(request: web.Request) -> web.Response:
     if not user:
         return web.json_response({'error': 'Unauthorized'}, status=401)
     uid = int(user.get('id', 0))
-    if uid not in MANAGER_IDS and uid not in ADMIN_IDS:
+    if uid not in all_manager_ids():
         return web.json_response({'error': 'Forbidden'}, status=403)
     try:
         body = await request.json()
@@ -1038,7 +1145,7 @@ async def api_admin_availability(request: web.Request) -> web.Response:
     if not user:
         return web.json_response({'error': 'Unauthorized'}, status=401)
     uid = int(user.get('id', 0))
-    if uid not in MANAGER_IDS and uid not in ADMIN_IDS:
+    if uid not in all_manager_ids():
         return web.json_response({'error': 'Forbidden'}, status=403)
     try:
         body = await request.json()
@@ -1057,7 +1164,7 @@ async def api_admin_products(request: web.Request) -> web.Response:
     if not user:
         return web.json_response({'error': 'Unauthorized'}, status=401)
     uid = int(user.get('id', 0))
-    if uid not in MANAGER_IDS and uid not in ADMIN_IDS:
+    if uid not in all_manager_ids():
         return web.json_response({'error': 'Forbidden'}, status=403)
     try:
         body = await request.json()
@@ -1106,7 +1213,7 @@ async def api_admin_categories(request: web.Request) -> web.Response:
     if not user:
         return web.json_response({'error': 'Unauthorized'}, status=401)
     uid = int(user.get('id', 0))
-    if uid not in ADMIN_IDS:
+    if uid not in all_admin_ids():
         return web.json_response({'error': 'Forbidden'}, status=403)
     try:
         body = await request.json()
@@ -1136,6 +1243,100 @@ async def api_admin_categories(request: web.Request) -> web.Response:
     return web.json_response({'ok': True, 'github': ok})
 
 
+async def api_admin_settings(request: web.Request) -> web.Response:
+    """Баннер, способы оплаты/доставки — редактируется администраторами."""
+    user = verify_init_data(request.headers.get('X-Init-Data', ''))
+    if not user:
+        return web.json_response({'error': 'Unauthorized'}, status=401)
+    uid = int(user.get('id', 0))
+    if uid not in all_admin_ids():
+        return web.json_response({'error': 'Forbidden'}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({'error': 'Invalid JSON'}, status=400)
+    data = body.get('data', {})
+    if not isinstance(data, dict):
+        return web.json_response({'error': 'Invalid data'}, status=400)
+
+    def _clean_list(raw, max_len: int, max_items: int) -> list:
+        if not isinstance(raw, list):
+            return []
+        out = []
+        for x in raw:
+            s = str(x).strip()[:max_len]
+            if s:
+                out.append(s)
+            if len(out) >= max_items:
+                break
+        return out
+
+    new_settings = {
+        "banner_title": str(data.get("banner_title", DEFAULT_SETTINGS["banner_title"]))[:200],
+        "banner_sub":   str(data.get("banner_sub",   DEFAULT_SETTINGS["banner_sub"]))[:300],
+        "banner_pill":  str(data.get("banner_pill",  DEFAULT_SETTINGS["banner_pill"]))[:120],
+        "payment_methods":  _clean_list(data.get("payment_methods"),  40, 10) or DEFAULT_SETTINGS["payment_methods"],
+        "delivery_methods": _clean_list(data.get("delivery_methods"), 40, 10) or DEFAULT_SETTINGS["delivery_methods"],
+    }
+    SETTINGS.update(new_settings)
+    save_settings_local(new_settings)
+    ok = push_json_github(new_settings, GITHUB_SETTINGS_PATH, "Update settings via bot")
+    return web.json_response({'ok': True, 'github': ok, 'data': new_settings})
+
+
+async def api_admin_team(request: web.Request) -> web.Response:
+    """Управление доп. админами/менеджерами — только для владельцев (ADMIN_IDS)."""
+    user = verify_init_data(request.headers.get('X-Init-Data', ''))
+    if not user:
+        return web.json_response({'error': 'Unauthorized'}, status=401)
+    uid = int(user.get('id', 0))
+    if uid not in ADMIN_IDS:
+        return web.json_response({'error': 'Forbidden'}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({'error': 'Invalid JSON'}, status=400)
+    data = body.get('data', {})
+    if not isinstance(data, dict):
+        return web.json_response({'error': 'Invalid data'}, status=400)
+
+    def _clean_people(raw, max_items: int) -> list:
+        if not isinstance(raw, list):
+            return []
+        out, seen = [], set()
+        for x in raw:
+            if not isinstance(x, dict):
+                continue
+            try:
+                pid = int(x.get('id'))
+            except Exception:
+                continue
+            if pid <= 0 or pid in seen:
+                continue
+            seen.add(pid)
+            name = str(x.get('name', ''))[:50]
+            out.append({'id': pid, 'name': name})
+            if len(out) >= max_items:
+                break
+        return out
+
+    new_team = {
+        "extra_admins":   _clean_people(data.get("extra_admins"),   20),
+        "extra_managers": _clean_people(data.get("extra_managers"), 20),
+    }
+
+    extra_admins.clear()
+    extra_managers.clear()
+    for a in new_team["extra_admins"]:
+        extra_admins[a["id"]] = a["name"]
+    for m in new_team["extra_managers"]:
+        extra_managers[m["id"]] = m["name"]
+
+    save_team_local(new_team)
+    ok = push_json_github(new_team, GITHUB_TEAM_PATH, "Update team via bot")
+    return web.json_response({'ok': True, 'github': ok, 'data': new_team})
+
+
 def make_api_app() -> web.Application:
     api = web.Application(middlewares=[cors_middleware])
     api.router.add_route('OPTIONS', '/{path_info:.*}', _handle_options)
@@ -1148,6 +1349,8 @@ def make_api_app() -> web.Application:
     api.router.add_post('/api/admin/availability', api_admin_availability)
     api.router.add_post('/api/admin/products',      api_admin_products)
     api.router.add_post('/api/admin/categories',    api_admin_categories)
+    api.router.add_post('/api/admin/settings',      api_admin_settings)
+    api.router.add_post('/api/admin/team',          api_admin_team)
     api.router.add_get('/health',          lambda r: web.Response(text='ok'))
     return api
 
@@ -1502,7 +1705,7 @@ async def handle_order(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def handle_admin_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     """Текст / фото от администратора или менеджера: пост-рассылка или загрузка фото товара."""
     uid = update.effective_user.id
-    if uid not in ADMIN_IDS and uid not in MANAGER_IDS:
+    if uid not in all_manager_ids():
         return
 
     # ── Загрузка фото товара ──────────────────────────────────
@@ -1831,8 +2034,10 @@ async def _run() -> None:
     application.add_handler(MessageHandler(
         filters.StatusUpdate.WEB_APP_DATA, handle_order
     ))
+    # Проверка прав — внутри handle_admin_message (список админов/менеджеров
+    # может меняться в рантайме через сайт, поэтому фильтр не статичный)
     application.add_handler(MessageHandler(
-        filters.Chat(list(ADMIN_IDS | MANAGER_IDS))
+        filters.ChatType.PRIVATE
         & (filters.TEXT | filters.PHOTO)
         & ~filters.COMMAND,
         handle_admin_message,
@@ -1874,6 +2079,8 @@ def main() -> None:
     load_customer_chats()
     load_support_users()
     load_chat_messages()
+    load_settings()
+    load_team()
     asyncio.run(_run())
 
 

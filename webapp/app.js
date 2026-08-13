@@ -79,6 +79,67 @@ async function loadCategories() {
 }
 
 // ──────────────────────────────────────────────────────────────
+//  НАСТРОЙКИ САЙТА (баннер, способы оплаты/доставки)
+// ──────────────────────────────────────────────────────────────
+let SETTINGS = {
+  banner_title: 'Свежее<br>поступление 🌊',
+  banner_sub:   '🛵 Доставка по городу от 150 ₽ · вне города цена по договорённости',
+  banner_pill:  '✨ Бесплатная доставка от 4 500 ₽',
+  payment_methods:  ['Онлайн-переводом', 'Наличными курьеру'],
+  delivery_methods: ['Доставка', 'Самовывоз'],
+};
+
+async function loadSettings() {
+  try {
+    const r = await fetch('settings.json?t=' + Date.now());
+    if (r.ok) {
+      const data = await r.json();
+      SETTINGS = { ...SETTINGS, ...data };
+    }
+  } catch (_) {}
+}
+
+function renderBanner() {
+  const t = document.getElementById('bannerTitle');
+  const s = document.getElementById('bannerSub');
+  const p = document.getElementById('bannerPill');
+  if (t) t.innerHTML = SETTINGS.banner_title;
+  if (s) s.textContent = SETTINGS.banner_sub;
+  if (p) p.textContent = SETTINGS.banner_pill;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  КОМАНДА (доп. админы/менеджеры, назначаемые владельцем через сайт)
+// ──────────────────────────────────────────────────────────────
+const OWNER_ADMIN_IDS_CLIENT   = [878878846, 1947509265];
+const OWNER_MANAGER_IDS_CLIENT = [7555460392, 7883720545];
+let ADMIN_IDS_CLIENT   = [...OWNER_ADMIN_IDS_CLIENT];
+let MANAGER_IDS_CLIENT = [...OWNER_ADMIN_IDS_CLIENT, ...OWNER_MANAGER_IDS_CLIENT];
+let TEAM_DATA = { extra_admins: [], extra_managers: [] };
+
+async function loadTeam() {
+  try {
+    const r = await fetch('team.json?t=' + Date.now());
+    if (r.ok) {
+      const t = await r.json();
+      TEAM_DATA = {
+        extra_admins:   Array.isArray(t.extra_admins)   ? t.extra_admins   : [],
+        extra_managers: Array.isArray(t.extra_managers) ? t.extra_managers : [],
+      };
+      const extraAdminIds   = TEAM_DATA.extra_admins.map(a => a.id);
+      const extraManagerIds = TEAM_DATA.extra_managers.map(m => m.id);
+      ADMIN_IDS_CLIENT   = [...new Set([...OWNER_ADMIN_IDS_CLIENT, ...extraAdminIds])];
+      MANAGER_IDS_CLIENT = [...new Set([...ADMIN_IDS_CLIENT, ...OWNER_MANAGER_IDS_CLIENT, ...extraManagerIds])];
+    }
+  } catch (_) {}
+}
+
+function isOwnerUser() {
+  const uid = tg?.initDataUnsafe?.user?.id;
+  return uid && OWNER_ADMIN_IDS_CLIENT.includes(uid);
+}
+
+// ──────────────────────────────────────────────────────────────
 //  СОСТОЯНИЕ
 //  cart: { "productId:variant": { productId, variant, qty, price, name } }
 // ──────────────────────────────────────────────────────────────
@@ -104,11 +165,6 @@ let chatPollFailures = 0;
 let availability = {};
 // Черновик изменений в панели менеджера
 let availDraft = {};
-
-// ID менеджеров/админа — синхронизируй с bot.py
-const MANAGER_IDS_CLIENT = [878878846, 1947509265, 7555460392, 7883720545];
-// Только владельцы видят редактор товаров
-const ADMIN_IDS_CLIENT   = [878878846, 1947509265];
 
 async function loadConfig() {
   try {
@@ -731,6 +787,10 @@ function closeOrderForm() {
   document.getElementById('orderFormModal').classList.remove('visible');
 }
 
+function isPickup(deliveryValue) {
+  return (deliveryValue || '').toLowerCase().includes('самовывоз');
+}
+
 function renderOrderForm() {
   const tgUser = tg?.initDataUnsafe?.user || {};
   const prefillName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ');
@@ -762,14 +822,16 @@ function renderOrderForm() {
 
     <div class="of-section">
       <div class="of-section-title">Способ оплаты</div>
-      <label class="of-radio"><input type="radio" name="payment" value="Онлайн-переводом" checked /><span class="of-radio-dot"></span>Онлайн-переводом</label>
-      <label class="of-radio"><input type="radio" name="payment" value="Наличными курьеру" /><span class="of-radio-dot"></span>Наличными курьеру</label>
+      ${(SETTINGS.payment_methods || []).map((m, i) => `
+        <label class="of-radio"><input type="radio" name="payment" value="${escHtml(m)}"${i === 0 ? ' checked' : ''} /><span class="of-radio-dot"></span>${escHtml(m)}</label>
+      `).join('')}
     </div>
 
     <div class="of-section">
       <div class="of-section-title">Способ получения</div>
-      <label class="of-radio"><input type="radio" name="delivery" value="Доставка" checked /><span class="of-radio-dot"></span>Доставка</label>
-      <label class="of-radio"><input type="radio" name="delivery" value="Самовывоз" /><span class="of-radio-dot"></span>Самовывоз</label>
+      ${(SETTINGS.delivery_methods || []).map((m, i) => `
+        <label class="of-radio"><input type="radio" name="delivery" value="${escHtml(m)}"${i === 0 ? ' checked' : ''} /><span class="of-radio-dot"></span>${escHtml(m)}</label>
+      `).join('')}
     </div>
 
     <div class="of-field">
@@ -800,7 +862,7 @@ function renderOrderForm() {
   body.querySelectorAll('input[name="delivery"]').forEach(r => {
     r.addEventListener('change', () => {
       const af = document.getElementById('ofAddressField');
-      if (af) af.style.display = (r.value === 'Самовывоз' && r.checked) ? 'none' : '';
+      if (af) af.style.display = (isPickup(r.value) && r.checked) ? 'none' : '';
     });
   });
 
@@ -818,7 +880,7 @@ async function submitOrderForm() {
 
   if (!name)  { showToast('⚠️ Введите имя'); return; }
   if (!phone) { showToast('⚠️ Введите телефон'); return; }
-  if (delivery === 'Доставка' && !address) { showToast('⚠️ Введите адрес доставки'); return; }
+  if (!isPickup(delivery) && !address) { showToast('⚠️ Введите адрес доставки'); return; }
 
   closeOrderForm();
   closeCartModal();
@@ -848,8 +910,12 @@ function plural(n) {
 //  ИНИЦИАЛИЗАЦИЯ
 // ──────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  await Promise.all([
+    loadConfig(), loadProducts(), loadAvailability(), loadCategories(),
+    loadSettings(), loadTeam(),
+  ]);
   tgInit();
-  await Promise.all([loadConfig(), loadProducts(), loadAvailability(), loadCategories()]);
+  renderBanner();
   renderCategories();
   renderProducts();
 
@@ -1097,6 +1163,8 @@ function renderProductsList() {
     <div class="prod-tabs">
       <button class="prod-tab prod-tab--active" id="tabProducts">📦 Товары</button>
       ${canEditCats ? '<button class="prod-tab" id="tabCategories">🗂 Категории</button>' : ''}
+      ${canEditCats ? '<button class="prod-tab" id="tabSettings">⚙️ Настройки</button>' : ''}
+      ${isOwnerUser() ? '<button class="prod-tab" id="tabTeam">👥 Команда</button>' : ''}
     </div>
     <button class="prod-add-new-btn" id="prodAddNewBtn">＋ Добавить товар</button>
     <div class="prod-list" id="prodList">
@@ -1107,6 +1175,8 @@ function renderProductsList() {
   modal.querySelector('#prodAddNewBtn')?.addEventListener('click', openAddProduct);
   modal.querySelector('#tabProducts')?.addEventListener('click', renderProductsList);
   modal.querySelector('#tabCategories')?.addEventListener('click', renderCategoriesEditor);
+  modal.querySelector('#tabSettings')?.addEventListener('click', renderSettingsEditor);
+  modal.querySelector('#tabTeam')?.addEventListener('click', renderTeamEditor);
   modal.querySelectorAll('.prod-edit-btn').forEach(btn =>
     btn.addEventListener('click', () => openProductEdit(+btn.dataset.id))
   );
@@ -1129,6 +1199,8 @@ function renderCategoriesEditor() {
     <div class="prod-tabs">
       <button class="prod-tab" id="tabProducts">📦 Товары</button>
       <button class="prod-tab prod-tab--active" id="tabCategories">🗂 Категории</button>
+      <button class="prod-tab" id="tabSettings">⚙️ Настройки</button>
+      ${isOwnerUser() ? '<button class="prod-tab" id="tabTeam">👥 Команда</button>' : ''}
     </div>
     <div class="prod-list" id="catList">
       ${CATEGORIES.map((c, i) => `
@@ -1165,6 +1237,8 @@ function renderCategoriesEditor() {
   modal.querySelector('#prodEditorClose')?.addEventListener('click', closeProductsEditor);
   modal.querySelector('#tabProducts')?.addEventListener('click', renderProductsList);
   modal.querySelector('#tabCategories')?.addEventListener('click', renderCategoriesEditor);
+  modal.querySelector('#tabSettings')?.addEventListener('click', renderSettingsEditor);
+  modal.querySelector('#tabTeam')?.addEventListener('click', renderTeamEditor);
   modal.querySelector('#catAddNewBtn')?.addEventListener('click', () => {
     const form = document.getElementById('catAddForm');
     if (form) form.style.display = form.style.display === 'none' ? '' : 'none';
@@ -1246,6 +1320,230 @@ async function saveCategories() {
       renderCategories();
       renderCategoriesEditor();
       showToast('✅ Категории сохранены');
+    } else {
+      showToast('❌ Ошибка сохранения');
+    }
+  } catch (_) {
+    showToast('❌ Нет связи');
+  }
+}
+
+// ── Редактор настроек сайта (баннер, оплата, доставка) ─────────
+
+function renderSettingsEditor() {
+  if (!isAdminUser()) return;
+  const modal = document.getElementById('prodEditorModal');
+  modal.innerHTML = `
+    <div class="avail-modal-handle"></div>
+    <div class="avail-modal-header">
+      <h2 class="avail-modal-title">🛠 Управление</h2>
+      <button class="cart-modal-close" id="prodEditorClose">✕</button>
+    </div>
+    <div class="prod-tabs">
+      <button class="prod-tab" id="tabProducts">📦 Товары</button>
+      <button class="prod-tab" id="tabCategories">🗂 Категории</button>
+      <button class="prod-tab prod-tab--active" id="tabSettings">⚙️ Настройки</button>
+      ${isOwnerUser() ? '<button class="prod-tab" id="tabTeam">👥 Команда</button>' : ''}
+    </div>
+    <div style="padding:12px 16px 0">
+      <label class="prod-field-label">Заголовок баннера (можно &lt;br&gt; для переноса строки)</label>
+      <input class="prod-field-input" id="setBannerTitle" maxlength="200" value="${escHtml(SETTINGS.banner_title)}" />
+      <label class="prod-field-label">Подзаголовок баннера</label>
+      <input class="prod-field-input" id="setBannerSub" maxlength="300" value="${escHtml(SETTINGS.banner_sub)}" />
+      <label class="prod-field-label">Плашка (бесплатная доставка и т.п.)</label>
+      <input class="prod-field-input" id="setBannerPill" maxlength="120" value="${escHtml(SETTINGS.banner_pill)}" />
+
+      <label class="prod-field-label" style="margin-top:14px">Способы оплаты</label>
+      <div id="setPaymentList"></div>
+      <button class="prod-add-new-btn" id="setPaymentAddBtn" style="margin:6px 0 0">＋ Добавить способ оплаты</button>
+
+      <label class="prod-field-label" style="margin-top:14px">Способы получения</label>
+      <div id="setDeliveryList"></div>
+      <button class="prod-add-new-btn" id="setDeliveryAddBtn" style="margin:6px 0 0">＋ Добавить способ получения</button>
+    </div>
+    <div class="avail-footer">
+      <button class="avail-save-btn" id="setSaveBtn">💾 Сохранить настройки</button>
+    </div>
+  `;
+  modal.querySelector('#prodEditorClose')?.addEventListener('click', closeProductsEditor);
+  modal.querySelector('#tabProducts')?.addEventListener('click', renderProductsList);
+  modal.querySelector('#tabCategories')?.addEventListener('click', renderCategoriesEditor);
+  modal.querySelector('#tabSettings')?.addEventListener('click', renderSettingsEditor);
+  modal.querySelector('#tabTeam')?.addEventListener('click', renderTeamEditor);
+
+  renderSettingsListEditor('setPaymentList', [...SETTINGS.payment_methods]);
+  renderSettingsListEditor('setDeliveryList', [...SETTINGS.delivery_methods]);
+
+  modal.querySelector('#setPaymentAddBtn')?.addEventListener('click', () => {
+    const list = getSettingsListValues('setPaymentList');
+    list.push('');
+    renderSettingsListEditor('setPaymentList', list);
+  });
+  modal.querySelector('#setDeliveryAddBtn')?.addEventListener('click', () => {
+    const list = getSettingsListValues('setDeliveryList');
+    list.push('');
+    renderSettingsListEditor('setDeliveryList', list);
+  });
+  modal.querySelector('#setSaveBtn')?.addEventListener('click', saveSettings);
+}
+
+function renderSettingsListEditor(containerId, values) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = values.map((v, i) => `
+    <div class="prod-variant-row" style="display:flex;gap:8px;align-items:center;margin-top:6px">
+      <input class="prod-field-input" data-idx="${i}" value="${escHtml(v)}" maxlength="40" style="flex:1" />
+      <button class="prod-delete-btn" data-idx="${i}" title="Удалить">🗑</button>
+    </div>
+  `).join('');
+  container.querySelectorAll('.prod-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const list = getSettingsListValues(containerId);
+      list.splice(+btn.dataset.idx, 1);
+      renderSettingsListEditor(containerId, list);
+    });
+  });
+}
+
+function getSettingsListValues(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return [];
+  return [...container.querySelectorAll('input')].map(i => i.value);
+}
+
+async function saveSettings() {
+  const data = {
+    banner_title: document.getElementById('setBannerTitle')?.value.trim() || '',
+    banner_sub:   document.getElementById('setBannerSub')?.value.trim()   || '',
+    banner_pill:  document.getElementById('setBannerPill')?.value.trim()  || '',
+    payment_methods:  getSettingsListValues('setPaymentList').map(v => v.trim()).filter(Boolean),
+    delivery_methods: getSettingsListValues('setDeliveryList').map(v => v.trim()).filter(Boolean),
+  };
+  if (!data.payment_methods.length)  return showToast('⚠️ Добавьте хотя бы один способ оплаты');
+  if (!data.delivery_methods.length) return showToast('⚠️ Добавьте хотя бы один способ получения');
+  try {
+    const resp = await fetch(`${API_URL}/api/admin/settings`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
+      body:    JSON.stringify({ data }),
+    });
+    if (resp.ok) {
+      const j = await resp.json();
+      SETTINGS = { ...SETTINGS, ...(j.data || data) };
+      renderBanner();
+      showToast('✅ Настройки сохранены');
+    } else {
+      showToast('❌ Ошибка сохранения');
+    }
+  } catch (_) {
+    showToast('❌ Нет связи');
+  }
+}
+
+// ── Редактор команды (доп. админы/менеджеры, только владелец) ──
+
+function renderTeamEditor() {
+  if (!isOwnerUser()) return;
+  const modal = document.getElementById('prodEditorModal');
+
+  const rowHtml = (person, role) => `
+    <div class="prod-list-item" id="team-${role}-${person.id}">
+      <div class="prod-list-info">
+        <div class="prod-list-name">${escHtml(person.name || 'Без имени')}</div>
+        <div class="prod-list-meta">ID: ${person.id}</div>
+      </div>
+      <div class="prod-list-actions">
+        <button class="prod-delete-btn" data-role="${role}" data-id="${person.id}" title="Удалить">🗑</button>
+      </div>
+    </div>
+  `;
+
+  modal.innerHTML = `
+    <div class="avail-modal-handle"></div>
+    <div class="avail-modal-header">
+      <h2 class="avail-modal-title">🛠 Управление</h2>
+      <button class="cart-modal-close" id="prodEditorClose">✕</button>
+    </div>
+    <div class="prod-tabs">
+      <button class="prod-tab" id="tabProducts">📦 Товары</button>
+      <button class="prod-tab" id="tabCategories">🗂 Категории</button>
+      <button class="prod-tab" id="tabSettings">⚙️ Настройки</button>
+      <button class="prod-tab prod-tab--active" id="tabTeam">👥 Команда</button>
+    </div>
+    <div style="padding:12px 16px 0">
+      <label class="prod-field-label">👑 Администраторы (товары, категории, настройки, промокоды)</label>
+      <div class="prod-list" id="teamAdminList">
+        ${TEAM_DATA.extra_admins.map(a => rowHtml(a, 'admin')).join('') || '<div class="prod-list-meta" style="padding:8px 0">Пока нет дополнительных администраторов</div>'}
+      </div>
+      <label class="prod-field-label" style="margin-top:14px">👨‍💼 Менеджеры (чат с клиентами, товары, наличие)</label>
+      <div class="prod-list" id="teamManagerList">
+        ${TEAM_DATA.extra_managers.map(m => rowHtml(m, 'manager')).join('') || '<div class="prod-list-meta" style="padding:8px 0">Пока нет дополнительных менеджеров</div>'}
+      </div>
+
+      <label class="prod-field-label" style="margin-top:14px">Добавить человека</label>
+      <input class="prod-field-input" id="teamNewId" type="number" placeholder="Telegram ID" />
+      <input class="prod-field-input" id="teamNewName" placeholder="Имя (для удобства)" maxlength="50" style="margin-top:8px" />
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="avail-save-btn" id="teamAddAdminBtn" style="flex:1">👑 Как админа</button>
+        <button class="avail-save-btn" id="teamAddManagerBtn" style="flex:1">👨‍💼 Как менеджера</button>
+      </div>
+      <div class="prod-list-meta" style="padding:8px 0">
+        Telegram ID можно узнать у бота @userinfobot
+      </div>
+    </div>
+  `;
+  modal.querySelector('#prodEditorClose')?.addEventListener('click', closeProductsEditor);
+  modal.querySelector('#tabProducts')?.addEventListener('click', renderProductsList);
+  modal.querySelector('#tabCategories')?.addEventListener('click', renderCategoriesEditor);
+  modal.querySelector('#tabSettings')?.addEventListener('click', renderSettingsEditor);
+  modal.querySelector('#tabTeam')?.addEventListener('click', renderTeamEditor);
+
+  modal.querySelectorAll('.prod-delete-btn[data-role]').forEach(btn => {
+    btn.addEventListener('click', () => removeTeamPerson(btn.dataset.role, +btn.dataset.id));
+  });
+  modal.querySelector('#teamAddAdminBtn')?.addEventListener('click', () => addTeamPerson('admin'));
+  modal.querySelector('#teamAddManagerBtn')?.addEventListener('click', () => addTeamPerson('manager'));
+}
+
+function addTeamPerson(role) {
+  const idInput   = document.getElementById('teamNewId');
+  const nameInput = document.getElementById('teamNewName');
+  const id   = parseInt(idInput?.value, 10);
+  const name = nameInput?.value.trim() || '';
+  if (!id || id <= 0) return showToast('⚠️ Введите корректный Telegram ID');
+
+  const list = role === 'admin' ? TEAM_DATA.extra_admins : TEAM_DATA.extra_managers;
+  if (list.some(p => p.id === id)) return showToast('⚠️ Этот человек уже в списке');
+  list.push({ id, name });
+  saveTeam();
+}
+
+function removeTeamPerson(role, id) {
+  const list = role === 'admin' ? TEAM_DATA.extra_admins : TEAM_DATA.extra_managers;
+  const idx = list.findIndex(p => p.id === id);
+  if (idx === -1) return;
+  list.splice(idx, 1);
+  saveTeam();
+}
+
+async function saveTeam() {
+  try {
+    const resp = await fetch(`${API_URL}/api/admin/team`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
+      body:    JSON.stringify({ data: TEAM_DATA }),
+    });
+    if (resp.ok) {
+      const j = await resp.json();
+      if (j.data) {
+        TEAM_DATA = j.data;
+        const extraAdminIds   = TEAM_DATA.extra_admins.map(a => a.id);
+        const extraManagerIds = TEAM_DATA.extra_managers.map(m => m.id);
+        ADMIN_IDS_CLIENT   = [...new Set([...OWNER_ADMIN_IDS_CLIENT, ...extraAdminIds])];
+        MANAGER_IDS_CLIENT = [...new Set([...ADMIN_IDS_CLIENT, ...OWNER_MANAGER_IDS_CLIENT, ...extraManagerIds])];
+      }
+      renderTeamEditor();
+      showToast('✅ Команда обновлена');
     } else {
       showToast('❌ Ошибка сохранения');
     }

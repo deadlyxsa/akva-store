@@ -4,5 +4,7 @@
 !webapp/products.json
 !webapp/config.json
 !webapp/categories.json
+!webapp/settings.json
+!webapp/team.json
 __pycache__/
 *.pyc
