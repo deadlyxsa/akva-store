@@ -992,7 +992,8 @@ function renderAvailBody() {
   body.querySelectorAll('.avail-toggle').forEach(btn => {
     btn.addEventListener('click', () => {
       const key = btn.dataset.key;
-      availDraft[key] = !availDraft[key];
+      const currentlyOn = availDraft[key] !== false;
+      availDraft[key] = !currentlyOn;
       btn.textContent = availDraft[key] ? '✅ Есть' : '❌ Нет';
       btn.className = `avail-toggle ${availDraft[key] ? 'avail-on' : 'avail-off'}`;
       tg?.HapticFeedback?.selectionChanged();
@@ -1002,23 +1003,57 @@ function renderAvailBody() {
 
 async function saveAvailability() {
   availability = { ...availDraft };
-
-  if (tg?.sendData) {
-    tg.sendData(JSON.stringify({ type: 'availability', data: availability }));
+  const btn = document.getElementById('availSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Сохраняем...'; }
+  try {
+    const resp = await fetch(`${API_URL}/api/admin/availability`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
+      body:    JSON.stringify({ data: availability }),
+    });
+    if (resp.ok) {
+      closeAvailModal();
+      renderProducts();
+      showToast('✅ Наличие сохранено');
+    } else {
+      showToast('❌ Ошибка сохранения');
+    }
+  } catch (_) {
+    showToast('❌ Нет связи');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Сохранить'; }
   }
-
-  closeAvailModal();
-  renderProducts();
-  showToast('✅ Наличие обновлено');
 }
 
 // ──────────────────────────────────────────────────────────────
 //  ПАНЕЛЬ АДМИНИСТРАТОРА (только для ADMIN_IDS_CLIENT)
 // ──────────────────────────────────────────────────────────────
 
-let editingProductId = null; // null = добавление нового
-let editingIsNew     = false;
-let pendingImageUpdate = false;
+let editingProductId  = null;
+let editingIsNew      = false;
+let pendingImageData  = null; // {filename, b64} если выбрано новое фото
+
+function compressImage(file, maxWidth = 900, quality = 0.78) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let w = img.width, h = img.height;
+        if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const b64 = canvas.toDataURL('image/jpeg', quality).split(',')[1];
+        const ext = file.name.split('.').pop() || 'jpg';
+        const safe = file.name.replace(/[^a-z0-9._-]/gi, '_');
+        resolve({ b64, filename: `${Date.now()}_${safe}` });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 function isAdminUser() {
   const uid = tg?.initDataUnsafe?.user?.id;
@@ -1095,7 +1130,11 @@ function renderCategoriesEditor() {
     <div class="prod-list" id="catList">
       ${CATEGORIES.map((c, i) => `
         <div class="prod-list-item" id="cat-row-${i}">
-          <div class="cat-list-icon">${c.img ? `<img src="${c.img}" style="width:28px;height:28px;object-fit:contain" />` : (c.icon || '📦')}</div>
+          <div class="cat-list-icon" id="cat-icon-${i}" style="cursor:pointer;position:relative" title="Нажми чтобы сменить фото">
+            ${c.img ? `<img src="${c.img}" style="width:36px;height:36px;object-fit:contain;border-radius:6px" />` : `<span style="font-size:24px">${c.icon || '📦'}</span>`}
+            <span style="position:absolute;bottom:-2px;right:-4px;font-size:10px">📷</span>
+          </div>
+          <input type="file" accept="image/*" id="cat-img-file-${i}" style="display:none" data-index="${i}" />
           <div class="prod-list-info">
             <div class="prod-list-name">${escHtml(c.label)}</div>
             <div class="prod-list-meta">id: ${escHtml(c.id)}</div>
@@ -1116,6 +1155,9 @@ function renderCategoriesEditor() {
       <input class="prod-field-input" id="catNewIcon" placeholder="📦" maxlength="4" />
       <button class="avail-save-btn" id="catNewSave" style="margin-top:10px">Добавить</button>
     </div>
+    <div class="avail-footer">
+      <button class="avail-save-btn" id="catSaveAllBtn">💾 Сохранить категории</button>
+    </div>
   `;
   modal.querySelector('#prodEditorClose')?.addEventListener('click', closeProductsEditor);
   modal.querySelector('#tabProducts')?.addEventListener('click', renderProductsList);
@@ -1125,12 +1167,46 @@ function renderCategoriesEditor() {
     if (form) form.style.display = form.style.display === 'none' ? '' : 'none';
   });
   modal.querySelector('#catNewSave')?.addEventListener('click', addCategory);
+  modal.querySelector('#catSaveAllBtn')?.addEventListener('click', saveCategories);
   modal.querySelectorAll('.cat-del-btn').forEach(btn => {
-    btn.addEventListener('click', () => deleteCategory(+btn.dataset.index));
+    btn.addEventListener('click', () => {
+      const idx = +btn.dataset.index;
+      const cat = CATEGORIES[idx];
+      const row = document.getElementById(`cat-row-${idx}`);
+      if (!row) return;
+      row.innerHTML = `
+        <div class="prod-confirm-row">
+          <span class="prod-confirm-text">Удалить «${escHtml(cat.label)}»?</span>
+          <button class="prod-confirm-yes" data-index="${idx}">✓ Да</button>
+          <button class="prod-confirm-no">✗ Нет</button>
+        </div>`;
+      row.querySelector('.prod-confirm-yes').addEventListener('click', () => deleteCategory(idx));
+      row.querySelector('.prod-confirm-no').addEventListener('click', renderCategoriesEditor);
+    });
+  });
+
+  // Смена фото категории
+  modal.querySelectorAll('[id^="cat-icon-"]').forEach(icon => {
+    icon.addEventListener('click', () => {
+      const idx = icon.id.replace('cat-icon-', '');
+      document.getElementById(`cat-img-file-${idx}`)?.click();
+    });
+  });
+  modal.querySelectorAll('[id^="cat-img-file-"]').forEach(input => {
+    input.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const idx = +input.dataset.index;
+      const icon = document.getElementById(`cat-icon-${idx}`);
+      if (icon) icon.innerHTML = '⏳';
+      const compressed = await compressImage(file, 128, 0.85);
+      CATEGORIES[idx].pendingImage = compressed;
+      if (icon) icon.innerHTML = `<img src="data:image/jpeg;base64,${compressed.b64}" style="width:36px;height:36px;object-fit:contain;border-radius:6px" /><span style="position:absolute;bottom:-2px;right:-4px;font-size:10px">✅</span>`;
+    });
   });
 }
 
-function addCategory() {
+async function addCategory() {
   const id    = document.getElementById('catNewId')?.value.trim().replace(/\s+/g, '_').toLowerCase();
   const label = document.getElementById('catNewLabel')?.value.trim();
   const icon  = document.getElementById('catNewIcon')?.value.trim() || '📦';
@@ -1138,30 +1214,40 @@ function addCategory() {
   if (!label) return showToast('⚠️ Введите название категории');
   if (CATEGORIES.find(c => c.id === id)) return showToast('⚠️ Категория с таким ID уже существует');
   CATEGORIES.push({ id, label, img: null, icon });
-  saveCategories();
+  await saveCategories();
 }
 
 function deleteCategory(index) {
   if (index < 0 || index >= CATEGORIES.length) return;
-  const cat = CATEGORIES[index];
-  if (!confirm(`Удалить категорию «${cat.label}»?`)) return;
   CATEGORIES.splice(index, 1);
   saveCategories();
 }
 
-function saveCategories() {
+async function saveCategories() {
   const exportData = CATEGORIES.map(c => ({
     id: c.id, label: c.label,
-    img:     c.img     || null,
-    icon:    c.icon    || null,
-    imgSize: c.imgSize || null,
+    img:          c.img          || null,
+    icon:         c.icon         || null,
+    imgSize:      c.imgSize      || null,
+    pendingImage: c.pendingImage || undefined,
   }));
-  if (tg?.sendData) {
-    tg.sendData(JSON.stringify({ type: 'categories', data: exportData }));
-  } else {
-    renderCategories();
-    renderCategoriesEditor();
-    showToast('✅ Категории обновлены (тест)');
+  try {
+    const resp = await fetch(`${API_URL}/api/admin/categories`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
+      body:    JSON.stringify({ data: exportData }),
+    });
+    if (resp.ok) {
+      // Очищаем pendingImage после загрузки
+      CATEGORIES.forEach(c => delete c.pendingImage);
+      renderCategories();
+      renderCategoriesEditor();
+      showToast('✅ Категории сохранены');
+    } else {
+      showToast('❌ Ошибка сохранения');
+    }
+  } catch (_) {
+    showToast('❌ Нет связи');
   }
 }
 
@@ -1201,18 +1287,25 @@ function confirmDeleteProduct(productId) {
   row.querySelector('.prod-confirm-no').addEventListener('click', renderProductsList);
 }
 
-function deleteProduct(productId) {
+async function deleteProduct(productId) {
   if (!isAdminUser() && !isManagerUser() && tg) return;
   const idx = PRODUCTS.findIndex(p => p.id === productId);
   if (idx === -1) return;
   PRODUCTS.splice(idx, 1);
   const exportData = buildExportData();
-  if (tg?.sendData) {
-    tg.sendData(JSON.stringify({ type: 'products', data: exportData }));
-  } else {
+  try {
+    const resp = await fetch(`${API_URL}/api/admin/products`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
+      body:    JSON.stringify({ data: exportData }),
+    });
     renderProductsList();
     renderProducts();
-    showToast('✅ Товар удалён (тест)');
+    showToast(resp.ok ? '✅ Товар удалён' : '⚠️ Удалён локально, ошибка сохранения');
+  } catch (_) {
+    renderProductsList();
+    renderProducts();
+    showToast('⚠️ Удалён локально, нет связи');
   }
 }
 
@@ -1222,7 +1315,7 @@ function openAddProduct() {
   if (!isAdminUser() && !isManagerUser() && tg) return;
   editingProductId = null;
   editingIsNew     = true;
-  pendingImageUpdate = false;
+  pendingImageData  = null;
   const newId  = Math.max(0, ...PRODUCTS.map(x => x.id)) + 1;
   const newP   = {
     id: newId, name: '', price: 0, badge: null, strength: null,
@@ -1236,7 +1329,7 @@ function openProductEdit(productId) {
   if (!isAdminUser() && !isManagerUser() && tg) return;
   editingProductId = productId;
   editingIsNew     = false;
-  pendingImageUpdate = false;
+  pendingImageData  = null;
   const p = PRODUCTS.find(x => x.id === productId);
   if (!p) return;
   renderEditForm(p, false);
@@ -1261,11 +1354,9 @@ function renderEditForm(p, isNew) {
     <div class="prod-edit-body">
 
       <div class="prod-img-section">
-        <div class="prod-img-wrap">${imgPreview}</div>
+        <div class="prod-img-wrap"><div id="prodImgWrap">${imgPreview}</div></div>
         <button class="prod-img-change-btn" id="prodImgChangeBtn">📷 Сменить фото</button>
-        <p class="prod-img-hint" id="prodImgHint" style="display:none">
-          После сохранения бот попросит прислать фото
-        </p>
+        <input type="file" id="prodImgFile" accept="image/*" style="display:none" />
       </div>
 
       <label class="prod-field-label">Название *</label>
@@ -1327,11 +1418,17 @@ function renderEditForm(p, isNew) {
   modal.querySelector('#peditSave')?.addEventListener('click', () => saveProduct(p.id));
 
   modal.querySelector('#prodImgChangeBtn')?.addEventListener('click', () => {
-    pendingImageUpdate = true;
-    const hint = document.getElementById('prodImgHint');
-    const btn  = document.getElementById('prodImgChangeBtn');
-    if (hint) hint.style.display = '';
-    if (btn)  { btn.textContent = '✅ Фото будет обновлено'; btn.disabled = true; }
+    document.getElementById('prodImgFile')?.click();
+  });
+  modal.querySelector('#prodImgFile')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const btn = document.getElementById('prodImgChangeBtn');
+    if (btn) { btn.textContent = '⏳ Сжимаем...'; btn.disabled = true; }
+    pendingImageData = await compressImage(file);
+    const wrap = document.getElementById('prodImgWrap');
+    if (wrap) wrap.innerHTML = `<img src="data:image/jpeg;base64,${pendingImageData.b64}" class="prod-img-preview" alt="" />`;
+    if (btn) { btn.textContent = '✅ Фото выбрано'; btn.disabled = false; }
     tg?.HapticFeedback?.impactOccurred('light');
   });
 
@@ -1371,7 +1468,7 @@ function buildExportData() {
   }));
 }
 
-function saveProduct(productId) {
+async function saveProduct(productId) {
   if (!isAdminUser() && !isManagerUser() && tg) return;
 
   const name         = document.getElementById('peditName')?.value.trim();
@@ -1400,15 +1497,38 @@ function saveProduct(productId) {
     variants.forEach(v => { if (!(`${productId}:${v}` in availability)) availability[`${productId}:${v}`] = true; });
   }
 
-  const exportData    = buildExportData();
-  const imageUpdates  = (pendingImageUpdate && !editingIsNew) ? [productId] : [];
+  const exportData = buildExportData();
+  const saveBtn = document.getElementById('peditSave');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Сохраняем...'; }
 
-  if (tg?.sendData) {
-    tg.sendData(JSON.stringify({ type: 'products', data: exportData, imageUpdates }));
-  } else {
-    renderProductsList();
-    renderProducts();
-    showToast(editingIsNew ? '✅ Товар добавлен (тест)' : '✅ Товар обновлён (тест)');
+  const body = { data: exportData };
+  if (pendingImageData && !editingIsNew) {
+    body.image = { productId, ...pendingImageData };
+  }
+
+  try {
+    const resp = await fetch(`${API_URL}/api/admin/products`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
+      body:    JSON.stringify(body),
+    });
+    if (resp.ok) {
+      const json = await resp.json();
+      // Обновляем картинку в локальном PRODUCTS если сервер её загрузил
+      if (body.image && json.ok) {
+        const idx = PRODUCTS.findIndex(p => p.id === productId);
+        if (idx !== -1) PRODUCTS[idx].image = `images/${pendingImageData.filename}`;
+      }
+      renderProductsList();
+      renderProducts();
+      showToast(editingIsNew ? '✅ Товар добавлен' : '✅ Товар обновлён');
+    } else {
+      showToast('❌ Ошибка сохранения');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Сохранить'; }
+    }
+  } catch (_) {
+    showToast('❌ Нет связи');
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Сохранить'; }
   }
 }
 

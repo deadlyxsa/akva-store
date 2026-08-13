@@ -1026,6 +1026,113 @@ async def api_close_chat(request: web.Request) -> web.Response:
     return web.json_response({'ok': True})
 
 
+# ══════════════════════════════════════════════════════════════
+#   HTTP API — ПАНЕЛЬ УПРАВЛЕНИЯ (наличие, товары, категории)
+# ══════════════════════════════════════════════════════════════
+
+async def api_admin_availability(request: web.Request) -> web.Response:
+    user = verify_init_data(request.headers.get('X-Init-Data', ''))
+    if not user:
+        return web.json_response({'error': 'Unauthorized'}, status=401)
+    uid = int(user.get('id', 0))
+    if uid not in MANAGER_IDS and uid not in ADMIN_IDS:
+        return web.json_response({'error': 'Forbidden'}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({'error': 'Invalid JSON'}, status=400)
+    data = body.get('data', {})
+    if not isinstance(data, dict):
+        return web.json_response({'error': 'Invalid data'}, status=400)
+    save_availability_local(data)
+    ok = push_availability_github(data)
+    return web.json_response({'ok': True, 'github': ok})
+
+
+async def api_admin_products(request: web.Request) -> web.Response:
+    user = verify_init_data(request.headers.get('X-Init-Data', ''))
+    if not user:
+        return web.json_response({'error': 'Unauthorized'}, status=401)
+    uid = int(user.get('id', 0))
+    if uid not in MANAGER_IDS and uid not in ADMIN_IDS:
+        return web.json_response({'error': 'Forbidden'}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({'error': 'Invalid JSON'}, status=400)
+    data = body.get('data', [])
+    if not isinstance(data, list) or not data:
+        return web.json_response({'error': 'Invalid data'}, status=400)
+
+    # Обработка загрузки изображения товара
+    img_info = body.get('image')
+    if img_info and isinstance(img_info, dict):
+        try:
+            pid_img  = img_info.get('productId')
+            filename = str(img_info.get('filename', 'product.jpg')).replace('/', '_')[:80]
+            b64str   = img_info.get('b64', '')
+            if pid_img is not None and b64str:
+                img_bytes = base64.b64decode(b64str)
+                img_path  = f"webapp/images/{filename}"
+                if push_image_github(img_bytes, img_path):
+                    for p in data:
+                        if str(p.get('id')) == str(pid_img):
+                            p['image'] = f"images/{filename}"
+        except Exception as e:
+            logger.warning("api_admin_products image upload: %s", e)
+
+    global PRODUCTS_DATA
+    PRODUCTS_DATA = data
+    PRODUCTS_CATALOG.clear()
+    for p in data:
+        try:
+            pid   = int(p['id'])
+            price = int(p['price'])
+            if price > 0:
+                PRODUCTS_CATALOG[pid] = {'name': str(p['name'])[:80], 'price': price}
+        except Exception:
+            continue
+
+    save_products_local(data)
+    ok = push_products_github(data)
+    return web.json_response({'ok': True, 'github': ok})
+
+
+async def api_admin_categories(request: web.Request) -> web.Response:
+    user = verify_init_data(request.headers.get('X-Init-Data', ''))
+    if not user:
+        return web.json_response({'error': 'Unauthorized'}, status=401)
+    uid = int(user.get('id', 0))
+    if uid not in ADMIN_IDS:
+        return web.json_response({'error': 'Forbidden'}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({'error': 'Invalid JSON'}, status=400)
+    cats = body.get('data', [])
+    if not isinstance(cats, list):
+        return web.json_response({'error': 'Invalid data'}, status=400)
+
+    # Обработка загрузок изображений для категорий
+    for cat in cats:
+        pending = cat.pop('pendingImage', None)
+        if pending and isinstance(pending, dict):
+            try:
+                filename = str(pending.get('filename', 'cat.jpg')).replace('/', '_')[:80]
+                b64str   = pending.get('b64', '')
+                if b64str:
+                    img_bytes = base64.b64decode(b64str)
+                    img_path  = f"webapp/images/{filename}"
+                    if push_image_github(img_bytes, img_path):
+                        cat['img'] = f"images/{filename}"
+            except Exception as e:
+                logger.warning("api_admin_categories image upload: %s", e)
+
+    save_categories_local(cats)
+    ok = push_categories_github(cats)
+    return web.json_response({'ok': True, 'github': ok})
+
+
 def make_api_app() -> web.Application:
     api = web.Application(middlewares=[cors_middleware])
     api.router.add_route('OPTIONS', '/{path_info:.*}', _handle_options)
@@ -1035,6 +1142,9 @@ def make_api_app() -> web.Application:
     api.router.add_get('/api/rooms',  api_rooms)
     api.router.add_post('/api/order',      api_order)
     api.router.add_post('/api/close_chat', api_close_chat)
+    api.router.add_post('/api/admin/availability', api_admin_availability)
+    api.router.add_post('/api/admin/products',      api_admin_products)
+    api.router.add_post('/api/admin/categories',    api_admin_categories)
     api.router.add_get('/health',          lambda r: web.Response(text='ok'))
     return api
 
