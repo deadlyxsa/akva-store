@@ -175,5 +175,20 @@
       "Киви-драгон фрукт-ягоды",
       "Малиновый лимонад"
     ]
+  },
+  {
+    "id": 12,
+    "name": "AAOK CYBER 26000",
+    "price": 850,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "disposables",
+    "variantLabel": "Вкус",
+    "image": "images/1786709911233_IMG_1613.jpeg",
+    "variants": [
+      "Ягодный микс",
+      "Лесные ягоды"
+    ]
   }
 ]
