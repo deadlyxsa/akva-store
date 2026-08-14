@@ -190,5 +190,19 @@
       "Ягодный микс",
       "Лесные ягоды"
     ]
+  },
+  {
+    "id": 13,
+    "name": "SONG 8000",
+    "price": 500,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "disposables",
+    "variantLabel": "Вкус",
+    "image": "images/1786709988581_IMG_1614.jpeg",
+    "variants": [
+      "Сладкий апельсин"
+    ]
   }
 ]
