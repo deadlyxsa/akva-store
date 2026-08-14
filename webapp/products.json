@@ -157,5 +157,19 @@
       "2 мл",
       "3 мл"
     ]
+  },
+  {
+    "id": 11,
+    "name": "AAOK AK 28000",
+    "price": 900,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "disposables",
+    "variantLabel": "Вкус",
+    "image": "images/1786709509310_IMG_1612.jpeg",
+    "variants": [
+      "."
+    ]
   }
 ]
