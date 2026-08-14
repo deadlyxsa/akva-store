@@ -26,6 +26,6 @@
   "7:Twill Silver": false,
   "8:0.6 Ом": true,
   "9:0.15 Ом": true,
-  "10:2 мл": true,
+  "10:2 мл": false,
   "10:3 мл": true
 }
