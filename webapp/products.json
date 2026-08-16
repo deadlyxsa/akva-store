@@ -270,5 +270,22 @@
       "Скитлс",
       "Черничный энергетик"
     ]
+  },
+  {
+    "id": 18,
+    "name": "Псих 7%",
+    "price": 400,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "liquids",
+    "variantLabel": "Вкус",
+    "image": "images/1786877925383_IMG_1628.jpeg",
+    "variants": [
+      "Energy drink",
+      "Grape lemonade",
+      "Raspberry lemonade",
+      "Skittles"
+    ]
   }
 ]
