@@ -220,5 +220,19 @@
       "Лесная ягода",
       "Малиновый лимонад"
     ]
+  },
+  {
+    "id": 15,
+    "name": "Vaporesso Xros 6",
+    "price": 2250,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "disposables",
+    "variantLabel": "Вкус",
+    "image": "images/1786877468418_IMG_1625.jpeg",
+    "variants": [
+      "Aurora blue"
+    ]
   }
 ]
