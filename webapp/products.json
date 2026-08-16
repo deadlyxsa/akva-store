@@ -287,5 +287,22 @@
       "Raspberry lemonade",
       "Skittles"
     ]
+  },
+  {
+    "id": 19,
+    "name": "Суицидник 8%",
+    "price": 450,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "liquids",
+    "variantLabel": "Вкус",
+    "image": "images/1786878071871_IMG_1629.jpeg",
+    "variants": [
+      "Кислая голубика малина",
+      "Кислые лесные ягоды",
+      "Кислый скитлс",
+      "Сладкая клубника малина"
+    ]
   }
 ]
