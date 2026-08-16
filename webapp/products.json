@@ -204,5 +204,21 @@
     "variants": [
       "Сладкий апельсин"
     ]
+  },
+  {
+    "id": 14,
+    "name": "Niko Тян",
+    "price": 400,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "liquids",
+    "variantLabel": "Вкус",
+    "image": "images/1786877362343_IMG_1624.jpeg",
+    "variants": [
+      "Red bull",
+      "Лесная ягода",
+      "Малиновый лимонад"
+    ]
   }
 ]
