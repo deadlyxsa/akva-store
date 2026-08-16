@@ -234,5 +234,22 @@
     "variants": [
       "Aurora blue"
     ]
+  },
+  {
+    "id": 16,
+    "name": "Злая лабубу",
+    "price": 400,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "liquids",
+    "variantLabel": "Вкус",
+    "image": "images/1786877512552_IMG_1626.jpeg",
+    "variants": [
+      "Адреналин энергетик",
+      "Земляничные червячки",
+      "Лесные ягоды",
+      "Малиновый лимонад"
+    ]
   }
 ]
