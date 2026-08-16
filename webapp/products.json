@@ -304,5 +304,19 @@
       "Кислый скитлс",
       "Сладкая клубника малина"
     ]
+  },
+  {
+    "id": 20,
+    "name": "Светящиеся очки GEEK BAR",
+    "price": 300,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "disposables",
+    "variantLabel": "Вкус",
+    "image": "images/1786878745590_IMG_1630.jpeg",
+    "variants": [
+      "."
+    ]
   }
 ]
