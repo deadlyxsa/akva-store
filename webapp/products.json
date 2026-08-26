@@ -346,5 +346,19 @@
     "variants": [
       "Ягодный скитлс"
     ]
+  },
+  {
+    "id": 23,
+    "name": "WAKA 20000",
+    "price": 1750,
+    "badge": "Хит",
+    "strength": null,
+    "description": "",
+    "category": "disposables",
+    "variantLabel": "Вкус",
+    "image": null,
+    "variants": [
+      "Вишня"
+    ]
   }
 ]
