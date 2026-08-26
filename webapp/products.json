@@ -318,5 +318,19 @@
     "variants": [
       "."
     ]
+  },
+  {
+    "id": 21,
+    "name": "Картридж aegis hero",
+    "price": 450,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "accessories",
+    "variantLabel": "Черный",
+    "image": "images/1787752887289_IMG_9521.jpeg",
+    "variants": [
+      "картридж aegis hero"
+    ]
   }
 ]
