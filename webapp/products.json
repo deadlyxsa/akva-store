@@ -335,30 +335,16 @@
   },
   {
     "id": 22,
-    "name": "PAFOS 20000",
-    "price": 1850,
-    "badge": "Хит",
-    "strength": "2%",
-    "description": "Крепкая линейка",
-    "category": "disposables",
-    "variantLabel": "Ягодный скитлс",
-    "image": "images/1787756585730_IMG_9520.jpeg",
-    "variants": [
-      "Ягодный скитлс"
-    ]
-  },
-  {
-    "id": 23,
-    "name": "WAKA 20000",
-    "price": 1750,
-    "badge": "Хит",
+    "name": "ANNIMA MISIDE",
+    "price": 400,
+    "badge": null,
     "strength": null,
     "description": "",
-    "category": "disposables",
+    "category": "liquids",
     "variantLabel": "Вкус",
-    "image": "images/1787756811097_IMG_9522.jpeg",
+    "image": "images/1787818748930_IMG_9523.jpeg",
     "variants": [
-      "Вишня"
+      "Милый киви"
     ]
   }
 ]
