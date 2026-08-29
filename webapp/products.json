@@ -371,5 +371,23 @@
       "Морозный энергетик",
       "черника ежевика"
     ]
+  },
+  {
+    "id": 24,
+    "name": "ANNIMA KILLER",
+    "price": 450,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "liquids",
+    "variantLabel": "Вкус",
+    "image": "images/1788016497609_IMG_9527.jpeg",
+    "variants": [
+      "Лесные ягоды",
+      "Земляника виноград",
+      "Клубничный коктейль",
+      "Розовый лимонад",
+      "Вишня скитлс лимон"
+    ]
   }
 ]
