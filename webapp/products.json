@@ -403,5 +403,19 @@
     "variants": [
       "Клубничный леденец"
     ]
+  },
+  {
+    "id": 26,
+    "name": "Pafos 20000",
+    "price": 1850,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "disposables",
+    "variantLabel": "Вкус",
+    "image": "images/1788016842920_IMG_9520.jpeg",
+    "variants": [
+      "Ягодный скитлс"
+    ]
   }
 ]
