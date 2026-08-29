@@ -352,5 +352,24 @@
     "variants": [
       "Милый киви"
     ]
+  },
+  {
+    "id": 23,
+    "name": "ANNIMA GOLD EDITION",
+    "price": 450,
+    "badge": null,
+    "strength": null,
+    "description": "",
+    "category": "liquids",
+    "variantLabel": "Вкус",
+    "image": "images/1788016259098_IMG_9524.jpeg",
+    "variants": [
+      "Кислый скитлс",
+      "Смородиновый лимонад",
+      "персиковый сок",
+      "клубничный мохито",
+      "Морозный энергетик",
+      "черника ежевика"
+    ]
   }
 ]
