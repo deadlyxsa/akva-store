@@ -357,7 +357,7 @@
     "id": 23,
     "name": "ANNIMA GOLD EDITION",
     "price": 450,
-    "badge": "Хит",
+    "badge": null,
     "strength": null,
     "description": "",
     "category": "liquids",
@@ -374,20 +374,34 @@
   },
   {
     "id": 24,
-    "name": "ANNIMA KILLER",
-    "price": 450,
+    "name": "ANNIMA SOUR",
+    "price": 400,
     "badge": null,
     "strength": null,
     "description": "",
     "category": "liquids",
     "variantLabel": "Вкус",
-    "image": "images/1788016497609_IMG_9527.jpeg",
+    "image": "images/1788016589031_IMG_9525.jpeg",
     "variants": [
-      "Лесные ягоды",
-      "Земляника виноград",
-      "Клубничный коктейль",
-      "Розовый лимонад",
-      "Вишня скитлс лимон"
+      "Кислый лайм черешня",
+      "Энергетик кислая вишня",
+      "Кислые малиновые червячки",
+      "Кислые лесные ягоды",
+      "Кислый скитлс"
+    ]
+  },
+  {
+    "id": 25,
+    "name": "ANNIMA ZOMBIE",
+    "price": 400,
+    "badge": "Новинка",
+    "strength": null,
+    "description": "",
+    "category": "liquids",
+    "variantLabel": "Вкус",
+    "image": "images/1788016727361_IMG_9526.jpeg",
+    "variants": [
+      "Клубничный леденец"
     ]
   }
 ]
